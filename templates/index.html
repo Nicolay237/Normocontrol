@@ -1,1 +1,100 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Нормоконтроль — автоматическая проверка оформления ВКР</title>
+<meta name="description" content="Загрузите .docx или .pdf — сервис проверит оформление работы на соответствие ГОСТ 7.32-2017 и покажет, где именно найдены отклонения.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22><circle cx=%2216%22 cy=%2216%22 r=%2214%22 fill=%22%23a3323d%22/><path d=%22M9 17l4 4 10-10%22 stroke=%22%23fff%22 stroke-width=%223%22 fill=%22none%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=PT+Serif:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+<link rel="stylesheet" href="{{ url_for('report_css') }}">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-mark"><span class="nav-seal">⬤</span> Нормоконтроль</div>
+  <div class="nav-std">ГОСТ 7.32&#8209;2017</div>
+</nav>
+
+<header class="hero">
+  <div class="hero-text">
+    <h1>Проверьте оформление работы раньше, чем это сделает нормоконтролёр</h1>
+    <p class="hero-sub">
+      Загрузите .docx или .pdf — сервис разберёт поля, шрифт, интервалы, отступы
+      и заголовки и покажет отклонения с указанием страницы и абзаца.
+    </p>
+
+    <form id="upload-form" novalidate>
+      <label class="dropzone" id="dropzone" for="file">
+        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M12 3v12m0-12l-4 4m4-4l4 4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/>
+        </svg>
+        <span class="dz-main">Перетащите файл сюда или нажмите</span>
+        <span class="dz-hint">.docx или .pdf, до 20&nbsp;МБ</span>
+      </label>
+      <input type="file" id="file" name="file" accept=".docx,.pdf" hidden>
+      <div id="filename" class="filename" hidden></div>
+      <button type="submit" id="submit-btn" disabled>Проверить документ</button>
+      <div id="form-error" class="form-error" hidden></div>
+    </form>
+  </div>
+
+  <div class="hero-stamp" aria-hidden="true">
+    <div class="stamp-ring">
+      <span>ГОСТ 7.32-2017</span>
+    </div>
+  </div>
+</header>
+
+<section class="features" id="features">
+  <h2>Что проверяется</h2>
+  <div class="feature-grid">
+    <div class="feature-card">
+      <h3>Поля страницы</h3>
+      <p>Левое, правое, верхнее и нижнее поля сверяются с допустимыми отклонениями.</p>
+    </div>
+    <div class="feature-card">
+      <h3>Шрифт и кегль</h3>
+      <p>Times New Roman 14&nbsp;пт для основного текста — с исключением для формул.</p>
+    </div>
+    <div class="feature-card">
+      <h3>Межстрочный интервал</h3>
+      <p>Полуторный интервал абзацев, включая PDF без явных метаданных форматирования.</p>
+    </div>
+    <div class="feature-card">
+      <h3>Красная строка</h3>
+      <p>Отступ первой строки 1,25&nbsp;см — без ложных срабатываний на списках.</p>
+    </div>
+    <div class="feature-card">
+      <h3>Заголовки</h3>
+      <p>Полужирное начертание и отсутствие точки в конце — оглавление не считается.</p>
+    </div>
+    <div class="feature-card">
+      <h3>Расположение нарушения</h3>
+      <p>Каждое замечание указывает страницу и абзац, а не сквозной номер по документу.</p>
+    </div>
+  </div>
+</section>
+
+<section class="results-section" id="results-section" hidden>
+  <div id="results"></div>
+  <button id="reset-btn" class="reset-btn">← Проверить другой файл</button>
+</section>
+
+<div id="loading" class="loading" hidden>
+  <div class="spinner" aria-hidden="true"></div>
+  <p>Разбираем документ…</p>
+</div>
+
+<footer class="site-footer">
+  <p>Нормы приведены по ГОСТ 7.32&#8209;2017 (типовые требования для ВКР). Сервис даёт предварительную
+     оценку — окончательное решение остаётся за нормоконтролем вашей кафедры.</p>
+</footer>
+
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
 
