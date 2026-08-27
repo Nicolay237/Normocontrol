@@ -31,6 +31,11 @@ NORMS = {
     "justify_min_ratio": 0.6,
     "heading_font_size_pt": 14,
     "heading_bold": True,
+    # По ГОСТ 7.32-2017 в оглавлении жирным выделяются только заголовки
+    # верхнего уровня (ВВЕДЕНИЕ, РАЗДЕЛ N, ЗАКЛЮЧЕНИЕ и т.п.),
+    # пункты/подпункты (1.1, 1.1.1) — обычным начертанием.
+    "toc_top_level_bold": True,
+    "toc_sub_level_bold": False,
 }
 
 HEADING_STYLE_PREFIXES = ("Heading", "Заголовок", "Title", "Название")
@@ -59,7 +64,65 @@ class Report:
         return len(self.issues) == 0
 
 
-def estimate_pagination(doc):
+def iter_all_paragraphs(document):
+    """
+    Обходит ВСЕ абзацы верхнего уровня в теле документа, включая те,
+    что спрятаны внутри content control (<w:sdt>).
+
+    Word оборачивает автособираемое оглавление именно в такой sdt-блок,
+    поэтому document.paragraphs (стандартный способ python-docx) его
+    просто не видит — из-за этого чекер был "слеп" ко всему оглавлению
+    целиком (не только к жирному шрифту в нём).
+
+    В таблицы не спускается — там абзацы обходятся отдельно, как и раньше
+    (см. doc.tables в check_docx).
+    """
+    from docx.oxml.ns import qn
+    from docx.text.paragraph import Paragraph
+
+    body = document.element.body
+
+    def walk(parent_element):
+        for child in parent_element:
+            tag = child.tag.split('}')[-1]
+            if tag == 'p':
+                yield Paragraph(child, document)
+            elif tag == 'sdt':
+                sdt_content = child.find(qn('w:sdtContent'))
+                if sdt_content is not None:
+                    yield from walk(sdt_content)
+
+    yield from walk(body)
+
+
+def get_all_runs(paragraph):
+    """
+    Возвращает ВСЕ runs абзаца, включая те, что лежат внутри <w:hyperlink>.
+
+    Строки оглавления — это внутренние гиперссылки на разделы, а
+    paragraph.runs (стандартный способ python-docx) runs внутри
+    <w:hyperlink> не отдаёт, поэтому проверка жирности по paragraph.runs
+    для записей оглавления всегда возвращала пустой список.
+    """
+    from docx.oxml.ns import qn
+    from docx.text.run import Run
+
+    return [Run(r, paragraph) for r in paragraph._p.findall('.//' + qn('w:r'))]
+
+
+def toc_style_level(p):
+    """
+    Определяет уровень записи оглавления (1, 2, 3...) по имени стиля
+    абзаца. Word называет такие стили 'TOC 1'/'TOC 2'/... или
+    'Оглавление 1'/'Оглавление 2'/... в зависимости от локали шаблона.
+    Возвращает None, если абзац не является записью оглавления по стилю.
+    """
+    name = (p.style.name if p.style else "").strip().lower()
+    m = re.match(r"(?:toc|оглавлени[ея]|содержани[ея])\s*(\d+)", name)
+    return int(m.group(1)) if m else None
+
+
+def estimate_pagination(doc, paragraphs):
     #Грубая оценка того, на какой странице окажется каждый абзац
     section = doc.sections[0]
     content_w = section.page_width.pt - section.left_margin.pt - section.right_margin.pt
@@ -69,10 +132,10 @@ def estimate_pagination(doc):
     page, used_lines = 1, 0.0
     page_counts = Counter()
 
-    for idx, p in enumerate(doc.paragraphs, start=1):
+    for idx, p in enumerate(paragraphs, start=1):
         text = p.text.strip()
         size = NORMS["font_size_pt"]
-        for run in p.runs:
+        for run in get_all_runs(p):
             if run.font.size:
                 size = run.font.size.pt
                 break
@@ -167,7 +230,8 @@ def check_docx(path, report):
 
     doc = Document(path)
     dfont = default_font(doc)
-    page_map = estimate_pagination(doc)
+    all_paragraphs = list(iter_all_paragraphs(doc))
+    page_map = estimate_pagination(doc, all_paragraphs)
     report.note(
         "Номера страниц — приблизительная оценка по объёму текста и параметрам "
         "страницы, реальная разбивка Word может отличаться (таблицы, изображения, разрывы)."
@@ -183,6 +247,11 @@ def check_docx(path, report):
         prefix = f"Страница {page}, заголовок в абзаце {n}" if page else f"Заголовок в абзаце №{idx}"
         return f"{prefix} («{preview(p)}»)"
 
+    def locate_toc(idx, p):
+        page, n = page_map.get(idx, (None, None))
+        prefix = f"Страница {page}, оглавление, абзац {n}" if page else f"Оглавление, абзац №{idx}"
+        return f"{prefix} («{preview(p)}»)"
+
     for i, s in enumerate(doc.sections, start=1):
         vals = {
             "left": emu_to_cm(s.left_margin), "right": emu_to_cm(s.right_margin),
@@ -195,14 +264,14 @@ def check_docx(path, report):
                 report.add(f"Раздел документа №{i}", "Поля страницы",
                            f"поле '{side}' = {actual} см, ожидается {expected} см (допуск ±{tol} см)")
 
-    for idx, p in enumerate(doc.paragraphs, start=1):
+    for idx, p in enumerate(all_paragraphs, start=1):
         if not p.text.strip() or is_heading(p) or is_toc_entry(p):
             continue
         loc = locate(idx, p)
         formula = is_formula(p)
         list_item = is_list_item(p)
 
-        for run in p.runs:
+        for run in get_all_runs(p):
             if not run.text.strip():
                 continue
             fname = run_font(run, dfont)
@@ -233,11 +302,11 @@ def check_docx(path, report):
             if indent_cm is None or abs(indent_cm - expected) > tol:
                 report.add(loc, "Красная строка", f"отступ первой строки {indent_cm or 0} см, ожидается {expected} см")
 
-    for idx, p in enumerate(doc.paragraphs, start=1):
+    for idx, p in enumerate(all_paragraphs, start=1):
         if not is_heading(p) or not p.text.strip() or is_toc_entry(p):
             continue
         loc = locate_heading(idx, p)
-        runs = [r for r in p.runs if r.text.strip()]
+        runs = [r for r in get_all_runs(p) if r.text.strip()]
         if NORMS["heading_bold"] and runs and not all(r.bold for r in runs):
             report.add(loc, "Оформление заголовка", "заголовок должен быть выделен жирным (bold)")
         if p.text.strip().endswith("."):
@@ -247,6 +316,34 @@ def check_docx(path, report):
             if size is not None and size != NORMS["heading_font_size_pt"]:
                 report.add(loc, "Оформление заголовка",
                            f"размер шрифта заголовка {size} pt, ожидается {NORMS['heading_font_size_pt']} pt")
+
+    # Оформление оглавления: заголовки верхнего уровня должны быть жирными,
+    # пункты/подпункты — нет. Раньше это было невозможно проверить в принципе:
+    # doc.paragraphs не видел записи оглавления (см. iter_all_paragraphs),
+    # а paragraph.runs не видел runs внутри гиперссылок (см. get_all_runs).
+    for idx, p in enumerate(all_paragraphs, start=1):
+        level = toc_style_level(p)
+        if level is None or not p.text.strip():
+            continue
+        # Номер страницы — это отдельный run (результат поля PAGEREF) и
+        # обычно НЕ наследует жирность заголовка, даже когда сам заголовок
+        # жирный. Это не ошибка оформления, поэтому цифры-номера страниц
+        # исключаются из проверки, чтобы не было ложных срабатываний.
+        runs = [
+            r for r in get_all_runs(p)
+            if r.text.strip() and not re.fullmatch(r"\d+", r.text.strip())
+        ]
+        if not runs:
+            continue
+        loc = locate_toc(idx, p)
+        is_bold = all(r.bold for r in runs)
+        if level == 1 and NORMS["toc_top_level_bold"] and not is_bold:
+            report.add(loc, "Оформление оглавления",
+                       "заголовок раздела в оглавлении должен быть выделен жирным (bold)")
+        elif level > 1 and not NORMS["toc_sub_level_bold"] and is_bold:
+            report.add(loc, "Оформление оглавления",
+                       "пункт оглавления не должен быть жирным (жирным выделяются только "
+                       "заголовки разделов верхнего уровня)")
 
     for ti, table in enumerate(doc.tables, start=1):
         for ri, row in enumerate(table.rows, start=1):
@@ -263,7 +360,7 @@ def check_docx(path, report):
                                        f"использован шрифт '{fname}', ожидается '{NORMS['font_name']}'")
 
     check_typography(
-        [(locate(i, p), p.text) for i, p in enumerate(doc.paragraphs, start=1)
+        [(locate(i, p), p.text) for i, p in enumerate(all_paragraphs, start=1)
          if not is_toc_entry(p)],
         report,
     )
