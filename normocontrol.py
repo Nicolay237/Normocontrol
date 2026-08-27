@@ -210,6 +210,28 @@ def check_docx(path, report):
                 return f
         return default
 
+    def effective_run_bold(run, paragraph):
+        """
+        Фактическая жирность run с учётом наследования от стиля абзаца.
+
+        run.bold в python-docx возвращает None, если жирность не задана
+        явно НА САМОМ run, и не заглядывает в стиль. На практике жирность
+        сплошь и рядом задаётся только на уровне стиля абзаца (например,
+        стиль 'Heading 3' сам по себе жирный) — Word показывает такой
+        текст жирным, а run.bold всё равно вернёт None. Раньше проверка
+        смотрела только на run.bold напрямую, из-за чего заголовки 2-го и
+        3-го уровня (жирность которых унаследована от стиля, а не задана
+        на run явно) ошибочно считались "не жирными".
+        """
+        if run.bold is not None:
+            return run.bold
+        style = paragraph.style
+        while style is not None:
+            if style.font.bold is not None:
+                return style.font.bold
+            style = style.base_style
+        return False
+
     def default_font(doc):
         try:
             return doc.styles['Normal'].font.name or "Times New Roman"
@@ -307,7 +329,7 @@ def check_docx(path, report):
             continue
         loc = locate_heading(idx, p)
         runs = [r for r in get_all_runs(p) if r.text.strip()]
-        if NORMS["heading_bold"] and runs and not all(r.bold for r in runs):
+        if NORMS["heading_bold"] and runs and not all(effective_run_bold(r, p) for r in runs):
             report.add(loc, "Оформление заголовка", "заголовок должен быть выделен жирным (bold)")
         if p.text.strip().endswith("."):
             report.add(loc, "Оформление заголовка", "в конце заголовка не должно быть точки")
@@ -336,7 +358,7 @@ def check_docx(path, report):
         if not runs:
             continue
         loc = locate_toc(idx, p)
-        is_bold = all(r.bold for r in runs)
+        is_bold = all(effective_run_bold(r, p) for r in runs)
         if level == 1 and NORMS["toc_top_level_bold"] and not is_bold:
             report.add(loc, "Оформление оглавления",
                        "заголовок раздела в оглавлении должен быть выделен жирным (bold)")
