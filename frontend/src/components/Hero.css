@@ -1,0 +1,76 @@
+.nc-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 640px) auto;
+  gap: 48px;
+  align-items: center;
+  justify-content: space-between;
+  padding: clamp(48px, 8vw, 96px) var(--gutter) 64px;
+  max-width: var(--container-max);
+  margin: 0 auto;
+}
+
+.nc-hero h1 {
+  font-weight: 900;
+  font-size: clamp(30px, 4vw, 46px);
+  line-height: 1.12;
+  letter-spacing: -0.3px;
+  margin: 0 0 20px;
+}
+
+.nc-hero__sub {
+  font-size: 17px;
+  color: var(--ink-soft);
+  max-width: 46ch;
+  margin: 0 0 20px;
+}
+
+.nc-hero__upload-note {
+  margin-bottom: 32px;
+}
+
+.nc-hero__stamp {
+  display: flex;
+  justify-content: center;
+}
+
+.nc-stamp-ring {
+  width: 168px;
+  height: 168px;
+  border-radius: 50%;
+  border: 3px solid var(--red);
+  color: var(--red);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  transform: rotate(-9deg);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: 0.5px;
+  padding: 14px;
+  position: relative;
+}
+
+.nc-stamp-ring::before {
+  content: '';
+  position: absolute;
+  inset: 8px;
+  border: 1px solid var(--red);
+  border-radius: 50%;
+  opacity: 0.55;
+}
+
+@media (max-width: 860px) {
+  .nc-hero {
+    grid-template-columns: 1fr;
+  }
+  .nc-hero__stamp {
+    order: -1;
+  }
+  .nc-stamp-ring {
+    width: 120px;
+    height: 120px;
+    font-size: 12px;
+  }
+}

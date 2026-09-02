@@ -4,25 +4,40 @@
 
 import os
 import tempfile
+from datetime import datetime, timezone
 
-from flask import Flask, request, render_template, jsonify, Response
+from flask import Flask, request, jsonify, send_from_directory
 
 import normocontrol as nc
 
-app = Flask(__name__)
+FRONTEND_DIST = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend", "dist")
+
+app = Flask(__name__, static_folder=FRONTEND_DIST, static_url_path="")
 app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024  # 20 МБ на файл
 
 ALLOWED_EXT = {".docx", ".pdf"}
 
 
-@app.route("/")
-def index():
-    return render_template("index.html")
+def serialize_report(report, filename):
+    """Turns a normocontrol.Report into the JSON shape the React frontend expects."""
+    categories = []
+    index_by_name = {}
+    for issue in report.issues:
+        if issue.category not in index_by_name:
+            index_by_name[issue.category] = len(categories)
+            categories.append({"name": issue.category, "issues": []})
+        categories[index_by_name[issue.category]]["issues"].append(
+            {"location": issue.location, "message": issue.message}
+        )
 
-
-@app.route("/report.css")
-def report_css():
-    return Response(nc.REPORT_CSS, mimetype="text/css")
+    return {
+        "filename": filename,
+        "generatedAt": datetime.now(timezone.utc).isoformat(),
+        "isClean": report.is_clean(),
+        "totalIssues": len(report.issues),
+        "notes": list(report.notes),
+        "categories": categories,
+    }
 
 
 @app.route("/health")
@@ -47,9 +62,8 @@ def api_check():
             report = nc.run_normocontrol(path)
         except Exception as e:
             return jsonify(error=f"Не удалось обработать файл: {e}"), 422
-        fragment = nc.build_report_fragment(report, f.filename)
 
-    return Response(fragment, mimetype="text/html")
+    return jsonify(serialize_report(report, f.filename))
 
 
 @app.errorhandler(413)
@@ -59,12 +73,20 @@ def too_large(e):
 
 @app.errorhandler(404)
 def not_found(e):
-    return jsonify(error="Страница не найдена."), 404
+    if request.path.startswith("/api/"):
+        return jsonify(error="Страница не найдена."), 404
+    # SPA fallback: any non-API 404 (deep link, refresh) still serves the app shell.
+    return send_from_directory(FRONTEND_DIST, "index.html")
 
 
 @app.errorhandler(500)
 def server_error(e):
     return jsonify(error="Внутренняя ошибка сервера."), 500
+
+
+@app.route("/")
+def index():
+    return send_from_directory(FRONTEND_DIST, "index.html")
 
 
 if __name__ == "__main__":

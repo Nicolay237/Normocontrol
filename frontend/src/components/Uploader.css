@@ -1,0 +1,90 @@
+.nc-uploader {
+  display: block;
+}
+
+.nc-dropzone {
+  border: 2px dashed var(--line);
+  border-radius: 6px;
+  padding: 36px 24px;
+  text-align: center;
+  cursor: pointer;
+  display: block;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+  color: var(--ink-soft);
+}
+
+.nc-dropzone svg {
+  margin-bottom: 10px;
+}
+
+.nc-dropzone--drag {
+  border-color: var(--red);
+  background: var(--red-soft);
+  color: var(--red);
+}
+
+.nc-dropzone--busy {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.nc-dropzone__main {
+  display: block;
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--ink);
+}
+
+.nc-dropzone__hint {
+  display: block;
+  font-size: 13px;
+  margin-top: 5px;
+}
+
+.nc-filename {
+  margin-top: 14px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--ink-soft);
+  word-break: break-word;
+}
+
+.nc-filename__size {
+  color: var(--ink-soft);
+}
+
+.nc-submit {
+  margin-top: 20px;
+  width: 100%;
+  padding: 15px;
+  border: none;
+  border-radius: 4px;
+  background: var(--ink);
+  color: #fff;
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 16px;
+  cursor: pointer;
+  transition:
+    opacity 0.15s,
+    background 0.15s;
+}
+
+.nc-submit:not(:disabled):hover {
+  background: var(--red);
+}
+
+.nc-submit:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.nc-form-error {
+  margin-top: 14px;
+  color: var(--red);
+  font-size: 14px;
+  font-weight: 700;
+}

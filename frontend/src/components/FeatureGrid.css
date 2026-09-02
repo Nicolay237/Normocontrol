@@ -1,0 +1,48 @@
+.nc-features {
+  max-width: var(--container-max);
+  margin: 0 auto;
+  padding: 0 var(--gutter) 80px;
+}
+
+.nc-features h2 {
+  font-weight: 700;
+  font-size: 24px;
+  margin: 0 0 28px;
+}
+
+.nc-features__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 18px;
+}
+
+.nc-feature-card {
+  background: var(--paper-card);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 22px 22px 24px;
+  position: relative;
+}
+
+.nc-feature-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 16px;
+  bottom: 16px;
+  width: 3px;
+  background: var(--gold);
+}
+
+.nc-feature-card h3 {
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 16px;
+  margin: 0 0 8px;
+}
+
+.nc-feature-card p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 14.5px;
+}
