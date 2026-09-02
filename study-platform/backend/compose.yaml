@@ -1,0 +1,100 @@
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: platform
+      POSTGRES_USER: platform
+      POSTGRES_PASSWORD: platform
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  backend:
+    build:
+      context: .
+      ssh:
+        - default
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # The client is generated during development and committed into the image;
+      # production startup therefore does not need to write into /app.
+      APP_ENVIRONMENT: production
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${STUDYPLATFORM_WS_PORT:-8000}:8000"
+    volumes:
+      - files_data:/data/files
+    read_only: true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready')\"",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - default
+      - normocontrol
+
+  # Проверка документов по ГОСТ. Чужой сервис со своим циклом обновлений:
+  # исходники берутся его репозиторием, копии в нашем дереве нет. Версия
+  # закреплена коммитом в scripts/normocontrol-source.sh.
+  #
+  # Профиль намеренный. Без него неудачная сборка чужого репозитория уронила
+  # бы `docker compose up` целиком, а вместе с ним и платформу. Включать так:
+  #   docker compose --profile normocontrol up -d --build normocontrol
+  # и только после того, как образ собрался, добавлять профиль в run.sh.
+  normocontrol:
+    profiles:
+      - normocontrol
+    # Собирается из соседнего клона, а не из git-контекста docker: BuildKit
+    # тянет репозиторий своим клиентом из собственного контейнера и до
+    # github.com оттуда не дотягивается. Клон готовит
+    # scripts/normocontrol-source.sh — там же закреплена версия.
+    build:
+      context: ../normocontrol-src
+    restart: unless-stopped
+    # Своей сети без выхода наружу: сервис разбирает файлы, присланные
+    # студентами, и ходить ему никуда не нужно. Проверено — сетевых вызовов в
+    # нём нет ни одного.
+    networks:
+      - normocontrol
+    read_only: true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health')\"",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+networks:
+  default:
+  # `internal: true` — сегмент без маршрута наружу. Бэкенд подключён к обоим,
+  # поэтому дотянуться до проверки может, а сама проверка в интернет — нет.
+  normocontrol:
+    internal: true
+
+volumes:
+  postgres_data:
+  files_data:
