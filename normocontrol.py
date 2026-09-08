@@ -1,17 +1,23 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-
 import sys
 import os
 import re
 import math
+import time
+import uuid
+import asyncio
+import hashlib
 import argparse
+import threading
 import statistics
 import html as html_lib
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from datetime import datetime
+from typing import Optional, List, Dict
+
 
 NORMS = {
     "margins_cm": {"left": 3.0, "right": 1.0, "top": 2.0, "bottom": 2.0},
@@ -36,10 +42,29 @@ NORMS = {
     # пункты/подпункты (1.1, 1.1.1) — обычным начертанием.
     "toc_top_level_bold": True,
     "toc_sub_level_bold": False,
+    # Подписи к рисункам: нулевой отступ первой строки, интервал 1.25.
+    "caption_first_line_indent_cm": 0.0,
+    "caption_line_spacing": 1.25,
 }
 
 HEADING_STYLE_PREFIXES = ("Heading", "Заголовок", "Title", "Название")
 PT_TO_CM = 2.54 / 72.0
+
+MATH_NS = "{http://schemas.openxmlformats.org/officeDocument/2006/math}"
+FORMULA_FONTS = {"cambria math", "symbol", "mt extra", "euclid math one"}
+LIST_MARKERS = re.compile(r"^\s*([-–—•*]|\d+[.)])\s+")
+
+# Подпись к рисунку: стиль с именем "Caption"/"Подпись" ИЛИ текст,
+# начинающийся с "Рисунок"/"Рис." + номер.
+FIGURE_CAPTION_RE = re.compile(r"^\s*Рис(?:унок)?\.?\s*\d+", re.IGNORECASE)
+
+# Номер раздела/подраздела в начале заголовка (1 / 1.2 / 1.2.3, в т.ч.
+# после слова РАЗДЕЛ/ГЛАВА) с необязательной точкой сразу после последней
+# цифры — по ГОСТ 7.32-2017 такой точки быть не должно.
+CHAPTER_NUMBER_RE = re.compile(
+    r"^(?:(?:РАЗДЕЛ|ГЛАВА)\s+)?(\d+(?:\.\d+)*)(\.)?(?=\s|$)",
+    re.IGNORECASE,
+)
 
 
 @dataclass
@@ -64,18 +89,14 @@ class Report:
         return len(self.issues) == 0
 
 
+
 def iter_all_paragraphs(document):
     """
     Обходит ВСЕ абзацы верхнего уровня в теле документа, включая те,
-    что спрятаны внутри content control (<w:sdt>).
+    что спрятаны внутри content control (<w:sdt>) — так Word оборачивает
+    автособираемое оглавление, и document.paragraphs их не видит.
 
-    Word оборачивает автособираемое оглавление именно в такой sdt-блок,
-    поэтому document.paragraphs (стандартный способ python-docx) его
-    просто не видит — из-за этого чекер был "слеп" ко всему оглавлению
-    целиком (не только к жирному шрифту в нём).
-
-    В таблицы не спускается — там абзацы обходятся отдельно, как и раньше
-    (см. doc.tables в check_docx).
+    В таблицы не спускается — там абзацы обходятся отдельно (см. doc.tables).
     """
     from docx.oxml.ns import qn
     from docx.text.paragraph import Paragraph
@@ -97,12 +118,9 @@ def iter_all_paragraphs(document):
 
 def get_all_runs(paragraph):
     """
-    Возвращает ВСЕ runs абзаца, включая те, что лежат внутри <w:hyperlink>.
-
-    Строки оглавления — это внутренние гиперссылки на разделы, а
-    paragraph.runs (стандартный способ python-docx) runs внутри
-    <w:hyperlink> не отдаёт, поэтому проверка жирности по paragraph.runs
-    для записей оглавления всегда возвращала пустой список.
+    Возвращает ВСЕ runs абзаца, включая те, что лежат внутри <w:hyperlink>
+    (строки оглавления — это внутренние гиперссылки на разделы, и
+    paragraph.runs их пропускает).
     """
     from docx.oxml.ns import qn
     from docx.text.run import Run
@@ -112,18 +130,141 @@ def get_all_runs(paragraph):
 
 def toc_style_level(p):
     """
-    Определяет уровень записи оглавления (1, 2, 3...) по имени стиля
-    абзаца. Word называет такие стили 'TOC 1'/'TOC 2'/... или
-    'Оглавление 1'/'Оглавление 2'/... в зависимости от локали шаблона.
-    Возвращает None, если абзац не является записью оглавления по стилю.
+    Уровень записи оглавления (1, 2, 3...) по имени стиля абзаца
+    ('TOC 1'/'Оглавление 1'/...). None, если это не запись оглавления.
     """
     name = (p.style.name if p.style else "").strip().lower()
     m = re.match(r"(?:toc|оглавлени[ея]|содержани[ея])\s*(\d+)", name)
     return int(m.group(1)) if m else None
 
 
+def emu_to_cm(v):
+    if v is None:
+        return None
+    from docx.shared import Emu
+    return round(Emu(v).cm, 3)
+
+
+def pt(v):
+    return round(v.pt, 2) if v is not None else None
+
+
+def preview(p, n=60):
+    t = p.text.strip()
+    return t[:n] + "..." if len(t) > n else (t or "(пустой абзац)")
+
+
+def is_heading(p):
+    name = p.style.name if p.style else ""
+    return any(name.startswith(x) for x in HEADING_STYLE_PREFIXES)
+
+
+def is_formula(p):
+    return p._element.find(f".//{MATH_NS}oMath") is not None
+
+
+def is_toc_entry(p):
+    name = (p.style.name if p.style else "").lower()
+    if "toc" in name or "оглавлен" in name or "содержан" in name:
+        return True
+    text = p.text
+    # запись оглавления обычно заканчивается табуляцией/точками-лидерами и номером страницы
+    return bool(re.search(r"[\t.]{2,}\s*\d+\s*$", text)) or bool(re.search(r"\t\s*\d+\s*$", text))
+
+
+def is_list_item(p):
+    name = (p.style.name if p.style else "").lower()
+    return "list" in name or bool(LIST_MARKERS.match(p.text))
+
+
+def is_figure_caption(p):
+    name = (p.style.name if p.style else "").lower()
+    if "caption" in name or name.startswith("подпись") or "название объекта" in name:
+        return True
+    return bool(FIGURE_CAPTION_RE.match(p.text.strip()))
+
+
+def run_font(run, default):
+    if run.font.name:
+        return run.font.name
+    rpr = run._element.find(
+        './/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}rFonts'
+    )
+    if rpr is not None:
+        f = rpr.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ascii')
+        if f:
+            return f
+    return default
+
+
+def default_font(doc):
+    try:
+        return doc.styles['Normal'].font.name or "Times New Roman"
+    except Exception:
+        return "Times New Roman"
+
+
+def effective_run_bold(run, paragraph, cache):
+    """
+    Фактическая жирность run с учётом наследования от стиля абзаца.
+
+    run.bold возвращает None, если жирность не задана явно НА САМОМ run
+    (а взята из стиля, например у 'Heading 3' целиком) — поэтому здесь
+    жирность в таком случае берётся из стиля абзаца, поднимаясь по цепочке
+    base_style, если нужно.
+
+    cache — словарь, живущий в пределах одной проверки одного документа
+    (создаётся заново в check_docx). Он экономит повторные обходы цепочки
+    стилей: в типичной ВКР на 500+ абзацев используется от силы 10-15
+    разных стилей, так что резонно посчитать жирность стиля один раз и
+    переиспользовать, а не ходить по base_style на каждый абзац заново.
+    """
+    if run.bold is not None:
+        return run.bold
+    style = paragraph.style
+    key = style.name if style else None
+    if key in cache:
+        result = cache[key]
+    else:
+        result = None
+        s = style
+        while s is not None:
+            if s.font.bold is not None:
+                result = s.font.bold
+                break
+            s = s.base_style
+        cache[key] = result
+    return result if result is not None else False
+
+
+def effective_paragraph_format(p, attr, cache):
+    """
+    Аналог effective_run_bold, но для paragraph_format-атрибутов
+    (line_spacing, alignment, first_line_indent...), тоже с кешем
+    результата резолвинга по цепочке стилей в пределах одного документа.
+    """
+    pf = p.paragraph_format
+    direct = getattr(pf, attr)
+    if direct is not None:
+        return direct
+    style = p.style
+    key = (style.name if style else None, attr)
+    if key in cache:
+        return cache[key]
+    result = None
+    s = style
+    while s is not None:
+        spf = s.paragraph_format
+        if spf and getattr(spf, attr) is not None:
+            result = getattr(spf, attr)
+            break
+        s = s.base_style
+    cache[key] = result
+    return result
+
+
 def estimate_pagination(doc, paragraphs):
-    #Грубая оценка того, на какой странице окажется каждый абзац
+    # Грубая оценка того, на какой странице окажется каждый абзац
     section = doc.sections[0]
     content_w = section.page_width.pt - section.left_margin.pt - section.right_margin.pt
     content_h = section.page_height.pt - section.top_margin.pt - section.bottom_margin.pt
@@ -160,97 +301,26 @@ def estimate_pagination(doc, paragraphs):
     return mapping
 
 
-def check_docx(path, report):
+def check_docx(doc_or_path, report):
+    """
+    Принимает либо путь к .docx, либо уже открытый объект Document —
+    второе нужно, чтобы run_normocontrol() мог один раз открыть документ
+    и передать его и сюда, и в check_title_page(), не разбирая файл дважды.
+    """
     from docx import Document
-    from docx.shared import Emu
     from docx.enum.text import WD_ALIGN_PARAGRAPH
 
-    MATH_NS = "{http://schemas.openxmlformats.org/officeDocument/2006/math}"
-    FORMULA_FONTS = {"cambria math", "symbol", "mt extra", "euclid math one"}
-    LIST_MARKERS = re.compile(r"^\s*([-–—•*]|\d+[.)])\s+")
+    if isinstance(doc_or_path, (str, os.PathLike)):
+        doc = Document(doc_or_path)
+    else:
+        doc = doc_or_path
 
-    def emu_to_cm(v):
-        return round(Emu(v).cm, 3) if v is not None else None
+    # Кеши резолвинга по цепочке стилей — см. docstring effective_run_bold.
+    # Живут только в пределах этого вызова check_docx, т.к. одинаковые имена
+    # стилей в разных документах могут означать разное форматирование.
+    style_bold_cache = {}
+    style_pf_cache = {}
 
-    def pt(v):
-        return round(v.pt, 2) if v is not None else None
-
-    def preview(p, n=60):
-        t = p.text.strip()
-        return t[:n] + "..." if len(t) > n else (t or "(пустой абзац)")
-
-    def is_heading(p):
-        name = p.style.name if p.style else ""
-        return any(name.startswith(x) for x in HEADING_STYLE_PREFIXES)
-
-    def is_formula(p):
-        return p._element.find(f".//{MATH_NS}oMath") is not None
-
-    def is_toc_entry(p):
-        name = (p.style.name if p.style else "").lower()
-        if "toc" in name or "оглавлен" in name or "содержан" in name:
-            return True
-        text = p.text
-        # запись оглавления обычно заканчивается табуляцией/точками-лидерами и номером страницы
-        return bool(re.search(r"[\t.]{2,}\s*\d+\s*$", text)) or bool(re.search(r"\t\s*\d+\s*$", text))
-
-    def is_list_item(p):
-        name = (p.style.name if p.style else "").lower()
-        return "list" in name or bool(LIST_MARKERS.match(p.text))
-
-    def run_font(run, default):
-        if run.font.name:
-            return run.font.name
-        rpr = run._element.find(
-            './/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}rFonts'
-        )
-        if rpr is not None:
-            f = rpr.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ascii')
-            if f:
-                return f
-        return default
-
-    def effective_run_bold(run, paragraph):
-        """
-        Фактическая жирность run с учётом наследования от стиля абзаца.
-
-        run.bold в python-docx возвращает None, если жирность не задана
-        явно НА САМОМ run, и не заглядывает в стиль. На практике жирность
-        сплошь и рядом задаётся только на уровне стиля абзаца (например,
-        стиль 'Heading 3' сам по себе жирный) — Word показывает такой
-        текст жирным, а run.bold всё равно вернёт None. Раньше проверка
-        смотрела только на run.bold напрямую, из-за чего заголовки 2-го и
-        3-го уровня (жирность которых унаследована от стиля, а не задана
-        на run явно) ошибочно считались "не жирными".
-        """
-        if run.bold is not None:
-            return run.bold
-        style = paragraph.style
-        while style is not None:
-            if style.font.bold is not None:
-                return style.font.bold
-            style = style.base_style
-        return False
-
-    def default_font(doc):
-        try:
-            return doc.styles['Normal'].font.name or "Times New Roman"
-        except Exception:
-            return "Times New Roman"
-
-    def effective(p, attr):
-        pf = p.paragraph_format
-        if getattr(pf, attr) is not None:
-            return getattr(pf, attr)
-        style = p.style
-        while style is not None:
-            spf = style.paragraph_format
-            if spf and getattr(spf, attr) is not None:
-                return getattr(spf, attr)
-            style = style.base_style
-        return None
-
-    doc = Document(path)
     dfont = default_font(doc)
     all_paragraphs = list(iter_all_paragraphs(doc))
     page_map = estimate_pagination(doc, all_paragraphs)
@@ -292,6 +362,7 @@ def check_docx(path, report):
         loc = locate(idx, p)
         formula = is_formula(p)
         list_item = is_list_item(p)
+        caption = is_figure_caption(p)
 
         for run in get_all_runs(p):
             if not run.text.strip():
@@ -303,36 +374,47 @@ def check_docx(path, report):
             if size is not None and abs(size - NORMS["font_size_pt"]) > NORMS["font_size_tolerance_pt"] and not formula:
                 report.add(loc, "Кегль шрифта", f"размер шрифта {size} pt, ожидается {NORMS['font_size_pt']} pt")
 
-        spacing = effective(p, "line_spacing")
+        spacing = effective_paragraph_format(p, "line_spacing", style_pf_cache)
         if spacing is not None:
             try:
                 v = float(spacing)
-                if abs(v - NORMS["line_spacing"]) > NORMS["line_spacing_tolerance"]:
-                    report.add(loc, "Межстрочный интервал", f"интервал {v}, ожидается {NORMS['line_spacing']}")
+                expected_spacing = NORMS["caption_line_spacing"] if caption else NORMS["line_spacing"]
+                if abs(v - expected_spacing) > NORMS["line_spacing_tolerance"]:
+                    label = "Подписи к рисункам" if caption else "Межстрочный интервал"
+                    report.add(loc, label, f"интервал {v}, ожидается {expected_spacing}")
             except (TypeError, ValueError):
                 pass
 
         if not list_item and not formula:
-            alignment = effective(p, "alignment")
+            alignment = effective_paragraph_format(p, "alignment", style_pf_cache)
             if alignment is not None and alignment != WD_ALIGN_PARAGRAPH.JUSTIFY:
                 report.add(loc, "Выравнивание", f"выравнивание '{alignment}', ожидается 'JUSTIFY' (по ширине)")
 
-            indent = effective(p, "first_line_indent")
-            indent_cm = emu_to_cm(indent) if indent is not None else None
-            expected = NORMS["first_line_indent_cm"]
+            indent = effective_paragraph_format(p, "first_line_indent", style_pf_cache)
+            # Если отступ нигде явно не задан, фактический (визуальный) отступ
+            # равен 0 — это относится и к обычному тексту (тогда это нарушение,
+            # т.к. ожидается 1.25 см), и к подписям рисунков (для них 0 см —
+            # это и есть норма, так что отсутствие отступа там не нарушение).
+            indent_cm = emu_to_cm(indent) if indent is not None else 0.0
+            expected_indent = NORMS["caption_first_line_indent_cm"] if caption else NORMS["first_line_indent_cm"]
             tol = NORMS["first_line_indent_tolerance_cm"]
-            if indent_cm is None or abs(indent_cm - expected) > tol:
-                report.add(loc, "Красная строка", f"отступ первой строки {indent_cm or 0} см, ожидается {expected} см")
+            if abs(indent_cm - expected_indent) > tol:
+                label = "Подписи к рисункам" if caption else "Красная строка"
+                report.add(loc, label, f"отступ первой строки {indent_cm} см, ожидается {expected_indent} см")
 
     for idx, p in enumerate(all_paragraphs, start=1):
         if not is_heading(p) or not p.text.strip() or is_toc_entry(p):
             continue
         loc = locate_heading(idx, p)
         runs = [r for r in get_all_runs(p) if r.text.strip()]
-        if NORMS["heading_bold"] and runs and not all(effective_run_bold(r, p) for r in runs):
+        if NORMS["heading_bold"] and runs and not all(effective_run_bold(r, p, style_bold_cache) for r in runs):
             report.add(loc, "Оформление заголовка", "заголовок должен быть выделен жирным (bold)")
         if p.text.strip().endswith("."):
             report.add(loc, "Оформление заголовка", "в конце заголовка не должно быть точки")
+        num_match = CHAPTER_NUMBER_RE.match(p.text.strip())
+        if num_match and num_match.group(2):
+            report.add(loc, "Оформление заголовка",
+                       "после номера раздела/подраздела не должно быть точки")
         for run in runs:
             size = pt(run.font.size)
             if size is not None and size != NORMS["heading_font_size_pt"]:
@@ -340,17 +422,14 @@ def check_docx(path, report):
                            f"размер шрифта заголовка {size} pt, ожидается {NORMS['heading_font_size_pt']} pt")
 
     # Оформление оглавления: заголовки верхнего уровня должны быть жирными,
-    # пункты/подпункты — нет. Раньше это было невозможно проверить в принципе:
-    # doc.paragraphs не видел записи оглавления (см. iter_all_paragraphs),
-    # а paragraph.runs не видел runs внутри гиперссылок (см. get_all_runs).
+    # пункты/подпункты — нет.
     for idx, p in enumerate(all_paragraphs, start=1):
         level = toc_style_level(p)
         if level is None or not p.text.strip():
             continue
-        # Номер страницы — это отдельный run (результат поля PAGEREF) и
-        # обычно НЕ наследует жирность заголовка, даже когда сам заголовок
-        # жирный. Это не ошибка оформления, поэтому цифры-номера страниц
-        # исключаются из проверки, чтобы не было ложных срабатываний.
+        # Номер страницы — отдельный run (поле PAGEREF), обычно НЕ наследует
+        # жирность заголовка, даже когда сам заголовок жирный — это не
+        # ошибка оформления, поэтому цифры-номера страниц исключены.
         runs = [
             r for r in get_all_runs(p)
             if r.text.strip() and not re.fullmatch(r"\d+", r.text.strip())
@@ -358,7 +437,7 @@ def check_docx(path, report):
         if not runs:
             continue
         loc = locate_toc(idx, p)
-        is_bold = all(effective_run_bold(r, p) for r in runs)
+        is_bold = all(effective_run_bold(r, p, style_bold_cache) for r in runs)
         if level == 1 and NORMS["toc_top_level_bold"] and not is_bold:
             report.add(loc, "Оформление оглавления",
                        "заголовок раздела в оглавлении должен быть выделен жирным (bold)")
@@ -387,6 +466,152 @@ def check_docx(path, report):
         report,
     )
 
+    return doc
+
+
+TITLE_PAGE_TEMPLATE_PATH: Optional[str] = None  # TODO(бэкенд): путь к образцу титульного листа
+
+
+@dataclass
+class ParagraphProfile:
+    index: int
+    font_name: Optional[str]
+    font_size_pt: Optional[float]
+    bold: bool
+    italic: bool
+    alignment: Optional[str]
+    text_len: int  # длина текста, а не сам текст — на титульном листе он у каждого свой
+
+
+@dataclass
+class TitlePageTemplate:
+    paragraphs: List[ParagraphProfile]
+    source_path: str
+
+    @classmethod
+    def from_docx(cls, path):
+        from docx import Document
+        doc = Document(path)
+        return cls(paragraphs=_extract_first_page_profile(doc), source_path=path)
+
+    def to_dict(self):
+        return {"source_path": self.source_path, "paragraphs": [asdict(p) for p in self.paragraphs]}
+
+    @classmethod
+    def from_dict(cls, data):
+        return cls(
+            source_path=data["source_path"],
+            paragraphs=[ParagraphProfile(**p) for p in data["paragraphs"]],
+        )
+
+
+_TITLE_TEMPLATE_CACHE: Dict[str, tuple] = {}
+
+
+def load_title_page_template(path):
+    """
+    Загружает шаблон титульного листа и кеширует его в памяти — повторный
+    вызов с тем же путём не будет заново парсить .docx, пока файл шаблона
+    не изменится (кеш инвалидируется по mtime).
+    """
+    if not path:
+        return None
+    mtime = os.path.getmtime(path)
+    cached = _TITLE_TEMPLATE_CACHE.get(path)
+    if cached and cached[1] == mtime:
+        return cached[0]
+    template = TitlePageTemplate.from_docx(path)
+    _TITLE_TEMPLATE_CACHE[path] = (template, mtime)
+    return template
+
+
+def _find_first_page_paragraphs(doc):
+    """
+    Абзацы титульного листа. Обрабатывает два частых случая:
+      1) титульный лист сверстан таблицей (частый способ точной раскладки
+         текста на листе) — тогда берутся абзацы из ячеек первой таблицы;
+      2) обычные абзацы до первого явного разрыва страницы/раздела.
+    Если ни один явный признак не найден, возвращает первые 25 абзацев —
+    как разумный запасной вариант, чтобы проверка не падала.
+    """
+    from docx.oxml.ns import qn
+    from docx.text.paragraph import Paragraph
+
+    body = doc.element.body
+    first_content = next(
+        (c for c in body if c.tag.split('}')[-1] in ('p', 'tbl')), None
+    )
+    if first_content is not None and first_content.tag.split('}')[-1] == 'tbl':
+        return [Paragraph(p, doc) for p in first_content.findall('.//' + qn('w:p'))]
+
+    paragraphs = list(iter_all_paragraphs(doc))
+    for i, p in enumerate(paragraphs):
+        for br in p._p.findall('.//' + qn('w:br')):
+            if br.get(qn('w:type')) == 'page':
+                return paragraphs[: i + 1]
+        pPr = p._p.find(qn('w:pPr'))
+        if pPr is not None and pPr.find(qn('w:sectPr')) is not None:
+            return paragraphs[: i + 1]
+    return paragraphs[:25]
+
+
+def _profile_paragraph(p, index, cache):
+    runs = [r for r in get_all_runs(p) if r.text.strip()]
+    font_name = font_size = None
+    bold = italic = False
+    if runs:
+        font_name = runs[0].font.name
+        font_size = round(runs[0].font.size.pt, 1) if runs[0].font.size else None
+        bold = bool(effective_run_bold(runs[0], p, cache))
+        italic = bool(runs[0].italic)
+    alignment = effective_paragraph_format(p, "alignment", {})
+    return ParagraphProfile(
+        index=index, font_name=font_name, font_size_pt=font_size,
+        bold=bold, italic=italic,
+        alignment=str(alignment) if alignment is not None else None,
+        text_len=len(p.text.strip()),
+    )
+
+
+def _extract_first_page_profile(doc):
+    cache = {}
+    return [_profile_paragraph(p, i, cache) for i, p in enumerate(_find_first_page_paragraphs(doc), start=1)]
+
+
+def check_title_page(doc, template, report):
+    """
+    Сравнивает форматирование титульного листа документа с шаблоном.
+    Если template is None — сравнение пропускается (см. пояснение выше).
+    """
+    if template is None:
+        report.note(
+            "Шаблон титульного листа не загружен — детальная проверка титульного "
+            "листа пропущена (остальные страницы работы проверяются как обычно)."
+        )
+        return
+
+    current = _extract_first_page_profile(doc)
+    ref = template.paragraphs
+
+    if len(current) != len(ref):
+        report.add("Титульный лист", "Титульный лист",
+                   f"количество строк титульного листа ({len(current)}) не совпадает "
+                   f"с шаблоном ({len(ref)})")
+
+    for i, (cur, exp) in enumerate(zip(current, ref), start=1):
+        if cur.text_len == 0 or exp.text_len == 0:
+            continue
+        loc = f"Титульный лист, строка {i}"
+        if exp.font_name and cur.font_name and cur.font_name != exp.font_name:
+            report.add(loc, "Титульный лист", f"шрифт '{cur.font_name}', в шаблоне '{exp.font_name}'")
+        if exp.font_size_pt and cur.font_size_pt and abs(cur.font_size_pt - exp.font_size_pt) > 0.5:
+            report.add(loc, "Титульный лист", f"кегль {cur.font_size_pt} pt, в шаблоне {exp.font_size_pt} pt")
+        if cur.bold != exp.bold:
+            report.add(loc, "Титульный лист",
+                       f"начертание {'жирное' if cur.bold else 'обычное'}, "
+                       f"в шаблоне {'жирное' if exp.bold else 'обычное'}")
+        if exp.alignment and cur.alignment != exp.alignment:
+            report.add(loc, "Титульный лист", f"выравнивание '{cur.alignment}', в шаблоне '{exp.alignment}'")
 
 
 def _cluster_lines(words, y_tol=2.5):
@@ -542,16 +767,77 @@ def check_typography(labeled_texts, report):
             report.add(loc, "Пробелы", "текст начинается с пробела/табуляции вместо красной строки")
 
 
-def run_normocontrol(path):
+def run_normocontrol(path, title_page_template=None):
     report = Report()
     ext = os.path.splitext(path)[1].lower()
     if ext == ".docx":
-        check_docx(path, report)
+        from docx import Document
+        doc = Document(path)
+        check_docx(doc, report)
+        if title_page_template is None and TITLE_PAGE_TEMPLATE_PATH:
+            title_page_template = load_title_page_template(TITLE_PAGE_TEMPLATE_PATH)
+        check_title_page(doc, title_page_template, report)
     elif ext == ".pdf":
         check_pdf(path, report)
+        if title_page_template or TITLE_PAGE_TEMPLATE_PATH:
+            report.note("Проверка титульного листа по шаблону для PDF пока не реализована.")
     else:
         raise ValueError(f"Неподдерживаемый формат файла: '{ext}'. Ожидается .docx или .pdf")
     return report
+
+
+_RESULT_CACHE: Dict[tuple, tuple] = {}
+_RESULT_CACHE_LOCK = threading.Lock()
+_RESULT_CACHE_TTL_SECONDS = 3600
+_RESULT_CACHE_MAX_ENTRIES = 200
+
+
+def _file_hash(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def run_normocontrol_cached(path, title_page_template=None):
+    """
+    Как run_normocontrol(), но с кешем по хэшу содержимого файла: если
+    один и тот же файл (побайтово) уже проверялся недавно, повторный разбор
+    документа пропускается. На практике часто помогает — пользователь
+    нередко жмёт "Проверить" повторно без изменения файла.
+
+    Потокобезопасно (Lock) — актуально, если сервер обрабатывает запросы
+    в нескольких потоках/воркерах одного процесса.
+    """
+    key = (_file_hash(path), bool(title_page_template))
+    now = time.time()
+    with _RESULT_CACHE_LOCK:
+        cached = _RESULT_CACHE.get(key)
+        if cached and now - cached[1] < _RESULT_CACHE_TTL_SECONDS:
+            return cached[0]
+
+    report = run_normocontrol(path, title_page_template=title_page_template)
+
+    with _RESULT_CACHE_LOCK:
+        if len(_RESULT_CACHE) >= _RESULT_CACHE_MAX_ENTRIES:
+            oldest_key = min(_RESULT_CACHE, key=lambda k: _RESULT_CACHE[k][1])
+            _RESULT_CACHE.pop(oldest_key, None)
+        _RESULT_CACHE[key] = (report, now)
+    return report
+
+
+async def run_normocontrol_async(path, title_page_template=None):
+    """
+    Асинхронная обёртка для асинхронных Flask/FastAPI-маршрутов.
+
+    Сам разбор .docx/.pdf — CPU-bound работа, а не I/O, поэтому "настоящей"
+    асинхронности здесь и не может быть: код просто выполняется в отдельном
+    потоке (asyncio.to_thread), чтобы не блокировать event loop сервера на
+    время проверки одного документа и дать серверу принимать/обрабатывать
+    другие запросы, пока этот считается.
+    """
+    return await asyncio.to_thread(run_normocontrol_cached, path, title_page_template)
 
 
 REPORT_CSS = """
@@ -601,7 +887,13 @@ REPORT_CSS = """
   font-size: 12.5px;
 }
 .report-card footer { margin-top: 32px; color: var(--ink-soft); font-size: 12px; }
-@media print { .report-card { box-shadow: none; border: none; } }
+.report-card .download-bar { display: flex; justify-content: flex-end; margin-bottom: 18px; }
+.report-card .download-bar a {
+  text-decoration: none; font-size: 13px; font-weight: bold; color: var(--ink);
+  border: 1px solid var(--line); border-radius: 4px; padding: 8px 14px;
+  font-family: ui-monospace, monospace;
+}
+@media print { .report-card { box-shadow: none; border: none; } .download-bar { display: none; } }
 """
 
 REPORT_CSS_VARS = """
@@ -612,8 +904,8 @@ REPORT_CSS_VARS = """
 """
 
 
-def build_report_fragment(report, source_path):
-    #Возвращает HTML-фрагмент отчёта (без <html>/<head>)
+def build_report_fragment(report, source_path, download_url=None):
+    # Возвращает HTML-фрагмент отчёта (без <html>/<head>)
     e = html_lib.escape
     by_category = {}
     for issue in report.issues:
@@ -644,7 +936,13 @@ def build_report_fragment(report, source_path):
         if clean else sections_html
     )
 
+    download_html = (
+        f'<div class="download-bar"><a href="{e(download_url)}" download>⭳ Скачать отчёт для студента</a></div>'
+        if download_url else ""
+    )
+
     return f"""<div class="report-card">
+    {download_html}
     <header>
       <div>
         <h1>Отчёт нормоконтроля</h1>
@@ -658,9 +956,9 @@ def build_report_fragment(report, source_path):
   </div>"""
 
 
-def build_html_report(report, source_path):
+def build_html_report(report, source_path, download_url=None):
     e = html_lib.escape
-    fragment = build_report_fragment(report, source_path)
+    fragment = build_report_fragment(report, source_path, download_url=download_url)
     return f"""<!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -698,16 +996,42 @@ def format_text_report(report, source_path):
     return "\n".join(lines)
 
 
+def save_report_files(report, source_path, out_dir, job_id=None):
+    """
+    Сохраняет отчёт как самодостаточный HTML-файл (готовый к скачиванию
+    студентом — CSS уже встроен внутрь) и возвращает job_id + путь.
+
+    job_id удобно использовать как часть URL маршрута скачивания на
+    сервере, например: GET /report/<job_id>/download -> send_file(...).
+    Если не передать — сгенерируется случайный (uuid4).
+    """
+    os.makedirs(out_dir, exist_ok=True)
+    job_id = job_id or uuid.uuid4().hex
+    html_path = os.path.join(out_dir, f"{job_id}.html")
+    with open(html_path, "w", encoding="utf-8") as f:
+        f.write(build_html_report(report, source_path, download_url=f"{job_id}.html"))
+    return {"job_id": job_id, "html": html_path}
+
+
 def main():
     parser = argparse.ArgumentParser(description="Проверка .docx/.pdf на нормоконтроль")
     parser.add_argument("doc_path", help="путь к .docx или .pdf файлу")
     parser.add_argument("--html", help="путь для HTML-отчёта (по умолчанию: <файл>_report.html)")
     parser.add_argument("--report", help="путь для текстового отчёта (опционально)")
     parser.add_argument("--no-html", action="store_true", help="не создавать HTML-отчёт")
+    parser.add_argument("--title-template", help="путь к образцу титульного листа (.docx) для сравнения")
     args = parser.parse_args()
 
+    template = None
+    if args.title_template:
+        try:
+            template = load_title_page_template(args.title_template)
+        except Exception as e:
+            print(f"Не удалось загрузить шаблон титульного листа: {e}", file=sys.stderr)
+            sys.exit(1)
+
     try:
-        report = run_normocontrol(args.doc_path)
+        report = run_normocontrol(args.doc_path, title_page_template=template)
     except Exception as e:
         print(f"Ошибка при обработке файла: {e}", file=sys.stderr)
         sys.exit(1)
