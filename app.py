@@ -17,6 +17,16 @@ app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024  # 20 МБ на файл
 
 ALLOWED_EXT = {".docx", ".pdf"}
 
+# Образец титульного листа.
+#
+# The checker ships the comparison but leaves the sample to the backend
+# (TITLE_PAGE_TEMPLATE_PATH is a TODO in normocontrol.py). Reading it from the
+# environment keeps the choice out of the code: a department that has a sample
+# points at it, everyone else gets the note saying the title page was skipped.
+TITLE_PAGE_TEMPLATE = os.environ.get("NORMOCONTROL_TITLE_TEMPLATE") or None
+if TITLE_PAGE_TEMPLATE:
+    nc.TITLE_PAGE_TEMPLATE_PATH = TITLE_PAGE_TEMPLATE
+
 
 def serialize_report(report, filename):
     """Turns a normocontrol.Report into the JSON shape the React frontend expects."""
@@ -59,7 +69,10 @@ def api_check():
         path = os.path.join(tmp, f.filename)
         f.save(path)
         try:
-            report = nc.run_normocontrol(path)
+            # Cached by file content: the platform re-checks the same upload
+            # after a retry or a page reload, and re-parsing a 60-page .docx
+            # for a byte-identical file is a second of work for the same answer.
+            report = nc.run_normocontrol_cached(path)
         except Exception as e:
             return jsonify(error=f"Не удалось обработать файл: {e}"), 422
 
