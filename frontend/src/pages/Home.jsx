@@ -1,27 +1,32 @@
 import { Link } from "react-router-dom";
 import { useProfiles } from "../ProfilesContext.jsx";
+import { Icon } from "../ui.jsx";
 
-const ORDER = ["vkr", "coursework"];
-const FALLBACK = { vkr: "Выпускная квалификационная работа", coursework: "Курсовая работа" };
+const CARDS = [
+  { key: "vkr", icon: "school", fallback: "Выпускная квалификационная работа" },
+  { key: "coursework", icon: "menu_book", fallback: "Курсовая работа" },
+];
 
 export default function Home({ notFound }) {
   const { profiles } = useProfiles();
   return (
-    <section className="home">
-      {notFound && <p className="form-error">Страница не найдена. Выберите тип работы:</p>}
-      <h1>Проверьте оформление работы раньше, чем это сделает нормоконтролёр</h1>
-      <p className="hero-sub">
+    <section className="page">
+      {notFound && <div className="banner banner-error body-medium" role="alert"><Icon name="error" /> Страница не найдена. Выберите тип работы:</div>}
+      <h1 className="display-small hero-title">Проверьте оформление работы раньше, чем это сделает нормоконтролёр</h1>
+      <p className="body-large supporting">
         Выберите тип работы, загрузите .docx или .pdf — сервис сверит поля, шрифт, интервалы,
         заголовки, подписи и нумерацию страниц с ГОСТ&nbsp;7.32&#8209;2017 и покажет, где именно найдены отклонения.
       </p>
-      <div className="choice-grid">
-        {ORDER.map((key) => {
+      <div className="card-grid">
+        {CARDS.map(({ key, icon, fallback }) => {
           const p = profiles?.[key];
           return (
-            <Link key={key} to={`/${key}`} className="choice-card">
-              <h2>{p?.title ?? FALLBACK[key]}</h2>
-              <p>{p?.description ?? ""}</p>
-              <span className="choice-go">Проверить →</span>
+            <Link key={key} to={`/${key}`} className="card card-filled card-link">
+              <md-ripple />
+              <span className="card-icon"><Icon name={icon} /></span>
+              <h2 className="title-large">{p?.title ?? fallback}</h2>
+              <p className="body-medium">{p?.description ?? ""}</p>
+              <span className="card-action label-large">Проверить <Icon name="arrow_forward" /></span>
             </Link>
           );
         })}

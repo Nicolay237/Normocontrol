@@ -5,6 +5,7 @@ import UploadForm from "../components/UploadForm.jsx";
 import NormsList from "../components/NormsList.jsx";
 import ReportView from "../components/ReportView.jsx";
 import AutoFix from "../components/AutoFix.jsx";
+import { Icon } from "../ui.jsx";
 
 const IDLE = { phase: "idle", report: null, error: null, file: null };
 
@@ -30,8 +31,16 @@ export default function CheckPage({ profileKey }) {
     }
   }
 
-  if (profilesError) return <section className="page"><p className="form-error">{profilesError}</p></section>;
-  if (!profile) return <section className="page"><p className="muted">Загрузка…</p></section>;
+  if (profilesError)
+    return (
+      <section className="page">
+        <div className="banner banner-error body-medium" role="alert"><Icon name="error" /> {profilesError}</div>
+      </section>
+    );
+  if (!profile)
+    return (
+      <section className="page loading"><md-circular-progress indeterminate="" /></section>
+    );
 
   if (state.phase === "done")
     return (
@@ -40,26 +49,32 @@ export default function CheckPage({ profileKey }) {
         {config.autofix_enabled && (
           <AutoFix key={state.report.report_id} file={state.file} profileKey={profileKey} />
         )}
-        <button className="reset-btn" onClick={() => setState(IDLE)}>
-          ← Проверить другой файл
-        </button>
+        <div className="reset">
+          <md-text-button onClick={() => setState(IDLE)}>
+            <span slot="icon" className="material-symbols-outlined">arrow_back</span>
+            Проверить другой файл
+          </md-text-button>
+        </div>
       </section>
     );
 
   return (
     <section className="page">
-      <p className="eyebrow">{profile.standard}</p>
-      <h1>{profile.title}</h1>
-      <p className="hero-sub">{profile.description}</p>
-      <p className="hero-sub upload-note">
-        <strong>Загружайте только текст самой работы</strong> — от «Введения» до приложений.
-        Титульный лист, задание, отзыв и рецензию лучше убрать: они оформляются по другим правилам.
-      </p>
+      <p className="label-large eyebrow">{profile.standard}</p>
+      <h1 className="display-small hero-title">{profile.title}</h1>
+      <p className="body-large supporting">{profile.description}</p>
+      <div className="banner banner-info body-medium">
+        <Icon name="lightbulb" />
+        <span>
+          <b>Загружайте только текст самой работы</b> — от «Введения» до приложений.
+          Титульный лист, задание, отзыв и рецензию лучше убрать: они оформляются по другим правилам.
+        </span>
+      </div>
 
       {state.phase === "loading" ? (
         <div className="loading">
-          <div className="spinner" aria-hidden="true" />
-          <p>Разбираем документ…</p>
+          <md-circular-progress indeterminate="" />
+          <p className="body-large">Разбираем документ…</p>
         </div>
       ) : (
         <UploadForm onSubmit={onSubmit} serverError={state.error} />

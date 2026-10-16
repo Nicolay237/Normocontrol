@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Icon, attr } from "../ui.jsx";
 
 const OK_EXT = /\.(docx|pdf)$/i;
 
@@ -23,6 +24,7 @@ export default function UploadForm({ onSubmit, serverError }) {
     setFile(f);
   }
 
+  const message = error || serverError;
   return (
     <form
       className="upload"
@@ -32,21 +34,39 @@ export default function UploadForm({ onSubmit, serverError }) {
       }}
     >
       <label
-        className={`dropzone${drag ? " drag" : ""}`}
+        className={`dropzone${drag ? " drag" : ""}${file ? " has-file" : ""}`}
         onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
         onDragLeave={() => setDrag(false)}
         onDrop={(e) => { e.preventDefault(); setDrag(false); pick(e.dataTransfer.files[0]); }}
       >
-        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-          <path d="M12 3v12m0-12l-4 4m4-4l4 4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" />
-        </svg>
-        <span className="dz-main">Перетащите файл сюда или нажмите</span>
-        <span className="dz-hint">.docx или .pdf, до 20&nbsp;МБ</span>
+        <md-ripple />
+        <span className="dz-icon"><Icon name={file ? "description" : "upload_file"} /></span>
+        {file ? (
+          <>
+            <span className="title-medium dz-name">{file.name}</span>
+            <span className="body-medium dz-hint">
+              {(file.size / 1024 / 1024).toFixed(2)} МБ · нажмите, чтобы выбрать другой файл
+            </span>
+          </>
+        ) : (
+          <>
+            <span className="title-medium">Перетащите файл сюда или нажмите</span>
+            <span className="body-medium dz-hint">.docx или .pdf, до 20&nbsp;МБ</span>
+          </>
+        )}
         <input type="file" accept=".docx,.pdf" hidden onChange={(e) => pick(e.target.files[0])} />
       </label>
-      {file && <div className="filename">{file.name}</div>}
-      <button type="submit" className="submit-btn" disabled={!file}>Проверить документ</button>
-      {(error || serverError) && <div className="form-error" role="alert">{error || serverError}</div>}
+
+      {message && (
+        <div className="banner banner-error body-medium" role="alert">
+          <Icon name="error" /> {message}
+        </div>
+      )}
+
+      <md-filled-button type="submit" disabled={attr(!file)} class="submit">
+        <span slot="icon" className="material-symbols-outlined">fact_check</span>
+        Проверить документ
+      </md-filled-button>
     </form>
   );
 }

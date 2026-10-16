@@ -1,0 +1,112 @@
+/* Тема Material 3 (цветовая схема от seed #9B2C3A) + типографика.
+   Токены --md-sys-* подхватывают и компоненты @material/web. */
+
+:root {
+  color-scheme: light;
+
+  --md-ref-typeface-brand: "Roboto Flex", "Roboto", system-ui, sans-serif;
+  --md-ref-typeface-plain: "Roboto", system-ui, sans-serif;
+
+  --md-sys-color-primary: #9b2c3a;
+  --md-sys-color-on-primary: #ffffff;
+  --md-sys-color-primary-container: #ffdad9;
+  --md-sys-color-on-primary-container: #410009;
+  --md-sys-color-secondary: #775655;
+  --md-sys-color-on-secondary: #ffffff;
+  --md-sys-color-secondary-container: #ffdad8;
+  --md-sys-color-on-secondary-container: #2c1514;
+  --md-sys-color-tertiary: #2e6a3b;            /* «успех» */
+  --md-sys-color-on-tertiary: #ffffff;
+  --md-sys-color-tertiary-container: #b0f2b5;
+  --md-sys-color-on-tertiary-container: #00210c;
+  --md-sys-color-error: #ba1a1a;
+  --md-sys-color-on-error: #ffffff;
+  --md-sys-color-error-container: #ffdad6;
+  --md-sys-color-on-error-container: #410002;
+  --md-sys-color-background: #fff8f7;
+  --md-sys-color-on-background: #231918;
+  --md-sys-color-surface: #fff8f7;
+  --md-sys-color-on-surface: #231918;
+  --md-sys-color-surface-variant: #f5dddc;
+  --md-sys-color-on-surface-variant: #534342;
+  --md-sys-color-outline: #857372;
+  --md-sys-color-outline-variant: #d8c2c0;
+  --md-sys-color-inverse-surface: #392e2d;
+  --md-sys-color-inverse-on-surface: #ffedeb;
+  --md-sys-color-surface-container-lowest: #ffffff;
+  --md-sys-color-surface-container-low: #fff0ef;
+  --md-sys-color-surface-container: #fceae9;
+  --md-sys-color-surface-container-high: #f6e4e3;
+  --md-sys-color-surface-container-highest: #f0dedd;
+  --md-sys-color-surface-tint: #9b2c3a;
+  --md-sys-color-shadow: #000000;
+  --md-sys-color-scrim: #000000;
+
+  /* типографика M3 */
+  --md-sys-typescale-display-small-font: var(--md-ref-typeface-brand);
+  --md-sys-typescale-headline-medium-font: var(--md-ref-typeface-brand);
+  --md-sys-typescale-headline-small-font: var(--md-ref-typeface-brand);
+  --md-sys-typescale-title-large-font: var(--md-ref-typeface-brand);
+  --md-sys-typescale-title-medium-font: var(--md-ref-typeface-plain);
+  --md-sys-typescale-label-large-font: var(--md-ref-typeface-plain);
+  --md-sys-typescale-body-large-font: var(--md-ref-typeface-plain);
+  --md-sys-typescale-body-medium-font: var(--md-ref-typeface-plain);
+
+  /* формы M3 */
+  --shape-xs: 4px; --shape-sm: 8px; --shape-md: 12px; --shape-lg: 16px; --shape-xl: 28px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --md-sys-color-primary: #ffb3b2;
+    --md-sys-color-on-primary: #5f1220;
+    --md-sys-color-primary-container: #7d2330;
+    --md-sys-color-on-primary-container: #ffdad9;
+    --md-sys-color-secondary: #e7bdbb;
+    --md-sys-color-on-secondary: #442928;
+    --md-sys-color-secondary-container: #5d3f3e;
+    --md-sys-color-on-secondary-container: #ffdad8;
+    --md-sys-color-tertiary: #95d59a;
+    --md-sys-color-on-tertiary: #00391a;
+    --md-sys-color-tertiary-container: #145226;
+    --md-sys-color-on-tertiary-container: #b0f2b5;
+    --md-sys-color-error: #ffb4ab;
+    --md-sys-color-on-error: #690005;
+    --md-sys-color-error-container: #93000a;
+    --md-sys-color-on-error-container: #ffdad6;
+    --md-sys-color-background: #1a1111;
+    --md-sys-color-on-background: #f1dedd;
+    --md-sys-color-surface: #1a1111;
+    --md-sys-color-on-surface: #f1dedd;
+    --md-sys-color-surface-variant: #534342;
+    --md-sys-color-on-surface-variant: #d8c2c0;
+    --md-sys-color-outline: #a08c8b;
+    --md-sys-color-outline-variant: #534342;
+    --md-sys-color-inverse-surface: #f1dedd;
+    --md-sys-color-inverse-on-surface: #392e2d;
+    --md-sys-color-surface-container-lowest: #140c0c;
+    --md-sys-color-surface-container-low: #231919;
+    --md-sys-color-surface-container: #271d1d;
+    --md-sys-color-surface-container-high: #322828;
+    --md-sys-color-surface-container-highest: #3d3232;
+    --md-sys-color-surface-tint: #ffb3b2;
+  }
+}
+
+/* типографские классы M3 */
+.display-small { font: 400 36px/44px var(--md-ref-typeface-brand); letter-spacing: 0; }
+.headline-medium { font: 400 28px/36px var(--md-ref-typeface-brand); }
+.headline-small { font: 400 24px/32px var(--md-ref-typeface-brand); }
+.title-large { font: 400 22px/28px var(--md-ref-typeface-brand); }
+.title-medium { font: 500 16px/24px var(--md-ref-typeface-plain); letter-spacing: .15px; }
+.body-large { font: 400 16px/24px var(--md-ref-typeface-plain); letter-spacing: .5px; }
+.body-medium { font: 400 14px/20px var(--md-ref-typeface-plain); letter-spacing: .25px; }
+.label-large { font: 500 14px/20px var(--md-ref-typeface-plain); letter-spacing: .1px; }
+.label-medium { font: 500 12px/16px var(--md-ref-typeface-plain); letter-spacing: .5px; }
+
+.material-symbols-outlined {
+  font-family: "Material Symbols Outlined"; font-weight: normal; font-style: normal;
+  font-size: 24px; line-height: 1; display: inline-block; white-space: nowrap;
+  font-feature-settings: "liga"; -webkit-font-feature-settings: "liga"; -webkit-font-smoothing: antialiased;
+}
