@@ -4,11 +4,12 @@ import { checkFile } from "../api.js";
 import UploadForm from "../components/UploadForm.jsx";
 import NormsList from "../components/NormsList.jsx";
 import ReportView from "../components/ReportView.jsx";
+import AutoFix from "../components/AutoFix.jsx";
 
-const IDLE = { phase: "idle", report: null, error: null };
+const IDLE = { phase: "idle", report: null, error: null, file: null };
 
 export default function CheckPage({ profileKey }) {
-  const { profiles, error: profilesError } = useProfiles();
+  const { profiles, error: profilesError, config } = useProfiles();
   const profile = profiles?.[profileKey];
   const [state, setState] = useState(IDLE);
 
@@ -19,13 +20,13 @@ export default function CheckPage({ profileKey }) {
   }, [profile]);
 
   async function onSubmit(file) {
-    setState({ phase: "loading", report: null, error: null });
+    setState({ phase: "loading", report: null, error: null, file });
     try {
       const report = await checkFile(file, profileKey);
-      setState({ phase: "done", report, error: null });
+      setState({ phase: "done", report, error: null, file });
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (e) {
-      setState({ phase: "idle", report: null, error: e.message });
+      setState({ phase: "idle", report: null, error: e.message, file: null });
     }
   }
 
@@ -36,6 +37,9 @@ export default function CheckPage({ profileKey }) {
     return (
       <section className="page">
         <ReportView report={state.report} />
+        {config.autofix_enabled && (
+          <AutoFix key={state.report.report_id} file={state.file} profileKey={profileKey} />
+        )}
         <button className="reset-btn" onClick={() => setState(IDLE)}>
           ← Проверить другой файл
         </button>

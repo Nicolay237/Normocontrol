@@ -8,7 +8,7 @@ from docx.text.paragraph import Paragraph
 
 from .docx_utils import (
     Resolver, iter_blocks, get_all_runs, run_in_hyperlink, has_image,
-    is_formula, has_page_break, preview, emu_to_cm, build_page_map,
+    is_formula, has_page_break, starts_with_page_break, preview, emu_to_cm, build_page_map,
 )
 from .norms import STRUCTURAL_HEADINGS
 from .typography import check_typography
@@ -31,6 +31,22 @@ TAB_RE = re.compile(r"^\s*(Табл(?:ица)?)(\.?)\s*(\d+(?:\.\d+)?|[А-ЯA-Z]
 CHAPTER_NUMBER_RE = re.compile(
     r"^(?:(?:РАЗДЕЛ|ГЛАВА)\s+)?(\d+(?:\.\d+)*)(\.)?(?=\s|$)", re.IGNORECASE)
 NUMBERED_HEADING_RE = re.compile(r"^\d+(?:\.\d+){0,3}\.?\s+\S")
+
+
+# Точка после сокращения (руб., гг., т.д.) — часть слова, а не точка предложения
+ABBREVIATIONS = {
+    "руб", "коп", "тыс", "млн", "млрд", "трлн", "гг", "г", "др", "пр", "д", "п", "см", "мм", "м",
+    "км", "кг", "шт", "чел", "ч", "мин", "сек", "с", "т", "кв", "куб", "гр", "рис", "табл", "стр",
+}
+
+
+def ends_with_sentence_dot(text):
+    """Заканчивается точкой предложения, а не точкой сокращения («тыс. руб.»)."""
+    t = text.rstrip()
+    if not t.endswith(".") or t.endswith(".."):
+        return False
+    m = re.search(r"([^\W\d_]+)\.$", t)
+    return not (m and m.group(1).lower() in ABBREVIATIONS)
 
 
 def _norm_caps(text):
@@ -182,10 +198,15 @@ class DocxChecker:
 
     # ── запуск ───────────────────────────────────────────────────────────
 
-    def run(self):
+    def prepare(self):
+        """Классификация блоков и карта страниц; возвращает items (используется и исправителем)."""
         items = self.classify()
         paragraphs = [it["obj"] for it in items if it["kind"] == "p"]
         self.page_map, self.exact = build_page_map(self.doc, paragraphs)
+        return items
+
+    def run(self):
+        items = self.prepare()
         self.report.note(
             "Номера страниц в замечаниях взяты из разметки Word и точны." if self.exact else
             "Номера страниц в замечаниях — приблизительная оценка по объёму текста "
@@ -399,7 +420,7 @@ class DocxChecker:
 
             if not structural and runs and not all(res.bold(r, p) for r in runs):
                 self.report.add(loc, "Оформление заголовка", "заголовок раздела должен быть выделен жирным (п. 6.2.3)")
-            if text.endswith("."):
+            if ends_with_sentence_dot(text):
                 self.report.add(loc, "Оформление заголовка", "в конце заголовка не должно быть точки")
             if any(res.underline(r, p) for r in runs):
                 self.report.add(loc, "Оформление заголовка", "заголовок не должен быть подчёркнут")
@@ -434,7 +455,12 @@ class DocxChecker:
                     self.report.add(loc, "Оформление заголовка", f"цвет заголовка #{color}, ожидается чёрный")
 
     def check_new_page(self, items):
-        """Каждый структурный элемент и раздел 1-го уровня — с новой страницы (п. 6.2.1)."""
+        for it in self.headings_missing_new_page(items):
+            self.report.add(self._loc(it["obj"], "заголовок в абзаце"), "Оформление заголовка",
+                            "заголовок должен начинаться с новой страницы (п. 6.2.1) — не найден разрыв страницы перед ним")
+
+    def headings_missing_new_page(self, items):
+        """Структурные элементы и разделы 1-го уровня без разрыва страницы перед ними (п. 6.2.1)."""
         if not self.n["heading_new_page"]:
             return
         res = self.res
@@ -452,7 +478,7 @@ class DocxChecker:
                 first_seen = True
                 continue
             first_seen = True
-            if res.page_break_before(p):
+            if res.page_break_before(p) or starts_with_page_break(p):
                 continue
             # Word сам зафиксировал, что абзац оказался первым на странице
             if self.exact and self.page_map.get(id(p._p), (0, 0))[1] == 1:
@@ -471,8 +497,7 @@ class DocxChecker:
                     break
                 j -= 1
             if not ok:
-                self.report.add(self._loc(p, "заголовок в абзаце"), "Оформление заголовка",
-                                "заголовок должен начинаться с новой страницы (п. 6.2.1) — не найден разрыв страницы перед ним")
+                yield it
 
     # ── оглавление ───────────────────────────────────────────────────────
 
@@ -526,7 +551,7 @@ class DocxChecker:
                         self.report.add(loc, "Подписи к рисункам и таблицам",
                                         f"ожидается формат «{full} {num} – Наименование» "
                                         f"(пробел, тире, пробел между номером и названием)")
-                    if text.endswith("."):
+                    if ends_with_sentence_dot(text):
                         self.report.add(loc, "Подписи к рисункам и таблицам",
                                         "в конце наименования точка не ставится")
                     name = rest_s.strip().lstrip(DASHES).strip()
@@ -551,9 +576,9 @@ class DocxChecker:
             seen_cells = set()
             for ri, row in enumerate(it["obj"].rows, start=1):
                 for ci, cell in enumerate(row.cells, start=1):
-                    if id(cell._tc) in seen_cells:  # объединённые ячейки повторяются в row.cells
+                    if cell._tc in seen_cells:  # объединённые ячейки повторяются в row.cells
                         continue
-                    seen_cells.add(id(cell._tc))
+                    seen_cells.add(cell._tc)
                     for p in cell.paragraphs:
                         for run in self._runs(p):
                             fname = res.font_name(run, p)

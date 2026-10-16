@@ -103,3 +103,20 @@ td.loc { width: 40%; color: var(--ink-soft); font-family: var(--font-mono); font
 @media (max-width: 640px) { .report-card { padding: 28px 22px; } td.loc { width: 45%; } }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .spinner { animation-duration: 2.4s; } }
 a:focus-visible, button:focus-visible, label:focus-visible, input:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+
+/* autofix */
+.autofix { max-width: 900px; margin: 28px auto 0; background: var(--paper-card); border: 1px solid var(--line); border-radius: 6px; padding: 28px 32px; position: relative; }
+.autofix::before { content: ""; position: absolute; left: 0; top: 18px; bottom: 18px; width: 4px; background: var(--green); }
+.autofix h2 { font-family: var(--font-display); font-size: 22px; margin: 0 0 8px; }
+.autofix p { margin: 0 0 14px; color: var(--ink-soft); font-size: 15px; }
+.autofix .submit-btn { width: auto; padding: 13px 26px; margin: 0; background: var(--green); }
+.autofix .submit-btn:not(:disabled):hover { background: var(--ink); }
+.fix-summary { font-family: var(--font-mono); font-size: 14px; margin: 0 0 16px; }
+.fix-list { margin: 0 0 18px; padding-left: 20px; font-size: 14.5px; }
+.fix-list li span { font-family: var(--font-mono); color: var(--ink-soft); margin-left: 6px; }
+.fix-download { display: inline-block; text-decoration: none; background: var(--green); color: #fff; font-weight: 700; padding: 13px 26px; border-radius: 4px; }
+.fix-download:hover { background: var(--ink); }
+.fix-warning { margin-top: 18px; font-size: 13.5px; color: var(--ink-soft); }
+.fix-remaining { margin-top: 22px; }
+.fix-remaining h3 { font-size: 16px; margin: 0 0 10px; }
+@media (max-width: 640px) { .autofix { padding: 22px 20px; } }

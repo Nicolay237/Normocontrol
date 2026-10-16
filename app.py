@@ -14,6 +14,7 @@ from flask import Flask, request, jsonify, Response, send_from_directory
 from checker import (
     PROFILES, describe_profile, run_normocontrol_cached, build_html_report,
 )
+from checker.fixers import fix_docx
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DIST_DIR = os.path.join(BASE_DIR, "frontend", "dist")
@@ -24,7 +25,16 @@ app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024  # 20 МБ на файл
 
 ALLOWED_EXT = {".docx", ".pdf"}
 
-# HTML-отчёты для скачивания: короткоживущее хранилище в памяти
+# Редакция сервиса: university — всё бесплатно (для кафедры); public — платное автоисправление
+# (оплата ещё не подключена, поэтому в public автоисправление выключено).
+EDITION = os.environ.get("EDITION", "university").lower()
+
+
+def can_autofix():
+    return EDITION == "university"
+
+
+# HTML-отчёты и исправленные файлы для скачивания: короткоживущее хранилище в памяти
 _REPORTS = {}
 _REPORTS_LOCK = threading.Lock()
 _REPORT_TTL = 3600
@@ -46,6 +56,11 @@ def _store_report(html, name):
 @app.route("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.route("/api/config")
+def api_config():
+    return jsonify(edition=EDITION, autofix_enabled=can_autofix())
 
 
 @app.route("/api/profiles")
@@ -84,6 +99,51 @@ def api_check():
     return jsonify(data)
 
 
+@app.route("/api/fix", methods=["POST"])
+def api_fix():
+    if not can_autofix():
+        return jsonify(error="Автоисправление в этой версии недоступно."), 403
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return jsonify(error="Файл не выбран."), 400
+    profile = request.form.get("profile", "vkr")
+    if profile not in PROFILES:
+        return jsonify(error="Неизвестный тип работы."), 400
+    if os.path.splitext(f.filename)[1].lower() != ".docx":
+        return jsonify(error="Автоисправление работает только с файлами .docx."), 400
+
+    with tempfile.TemporaryDirectory() as tmp:
+        src, dst = os.path.join(tmp, "upload.docx"), os.path.join(tmp, "fixed.docx")
+        f.save(src)
+        try:
+            result = fix_docx(src, dst, PROFILES[profile])
+        except Exception:
+            app.logger.exception("fix failed")
+            return jsonify(error="Не удалось исправить файл. Убедитесь, что он не повреждён и не защищён паролем."), 422
+        with open(dst, "rb") as fh:
+            data = fh.read()
+
+    base = os.path.splitext(f.filename)[0]
+    payload = result.to_dict()
+    payload["file"] = f.filename
+    payload["download_id"] = _store_report(data, f"{base}_исправлено.docx")
+    return jsonify(payload)
+
+
+@app.route("/api/fixed/<rid>")
+def api_fixed_download(rid):
+    with _REPORTS_LOCK:
+        entry = _REPORTS.get(rid)
+    if not entry or not isinstance(entry[0], bytes):
+        return jsonify(error="Файл не найден или устарел. Запустите исправление заново."), 404
+    data, name, _ = entry
+    resp = Response(data, mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    resp.headers["Content-Disposition"] = (
+        f"attachment; filename=fixed.docx; filename*=UTF-8''{quote(name)}"
+    )
+    return resp
+
+
 @app.route("/api/report/<rid>")
 def api_report_download(rid):
     with _REPORTS_LOCK:
@@ -91,6 +151,8 @@ def api_report_download(rid):
     if not entry:
         return jsonify(error="Отчёт не найден или устарел. Проверьте файл заново."), 404
     html, name, _ = entry
+    if not isinstance(html, str):
+        return jsonify(error="Отчёт не найден."), 404
     base = os.path.splitext(name)[0]
     resp = Response(html, mimetype="text/html")
     resp.headers["Content-Disposition"] = (

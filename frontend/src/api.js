@@ -14,3 +14,14 @@ export function checkFile(file, profile) {
 }
 
 export const reportUrl = (id) => `/api/report/${id}`;
+
+export const fetchConfig = () => fetch("/api/config").then(parse);
+
+export function fixFile(file, profile) {
+  const data = new FormData();
+  data.append("file", file);
+  data.append("profile", profile);
+  return fetch("/api/fix", { method: "POST", body: data }).then(parse);
+}
+
+export const fixedUrl = (id) => `/api/fixed/${id}`;

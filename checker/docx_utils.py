@@ -75,6 +75,17 @@ def has_page_break(p):
     return ppr is not None and ppr.find(qn('w:sectPr')) is not None
 
 
+def starts_with_page_break(p):
+    """Разрыв страницы стоит внутри самого абзаца до его первого текста."""
+    for el in p._p.iter(qn('w:br'), qn('w:t')):
+        if el.tag == qn('w:br'):
+            if el.get(qn('w:type')) == 'page':
+                return True
+        elif el.text:
+            return False
+    return False
+
+
 # ── цепочки стилей ────────────────────────────────────────────────────────
 
 def style_chain(style):
