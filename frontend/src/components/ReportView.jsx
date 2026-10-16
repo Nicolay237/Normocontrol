@@ -24,7 +24,7 @@ function Category({ cat }) {
       <summary className="title-medium">
         <span>{cat.name}</span>
         <span className="badge label-medium">{cat.count}</span>
-        <span className="chevron"><Icon name="expand_more" /></span>
+        <span className="chevron"><Icon name="chevron" /></span>
       </summary>
       <IssueList issues={cat.issues.slice(0, shown)} />
       {shown < cat.count && (
@@ -47,13 +47,13 @@ export default function ReportView({ report }) {
   return (
     <div className="report">
       <div className={`summary ${clean ? "summary-ok" : "summary-bad"}`}>
-        <span className="summary-icon"><Icon name={clean ? "check_circle" : "report"} /></span>
+        <span className="summary-icon"><Icon name={clean ? "ok" : "report"} /></span>
         <div className="summary-text">
           <div className="headline-small">{clean ? "Соответствует нормам" : `${total} ${plural(total)}`}</div>
           <div className="body-medium">{report.file} · {report.profile.title} · {report.checked_at}</div>
         </div>
         <md-outlined-button href={reportUrl(report.report_id)} download="">
-          <span slot="icon" className="material-symbols-outlined">download</span>
+          <Icon name="download" slot="icon" />
           Отчёт .html
         </md-outlined-button>
       </div>

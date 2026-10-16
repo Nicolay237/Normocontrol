@@ -40,7 +40,7 @@ export default function UploadForm({ onSubmit, serverError }) {
         onDrop={(e) => { e.preventDefault(); setDrag(false); pick(e.dataTransfer.files[0]); }}
       >
         <md-ripple />
-        <span className="dz-icon"><Icon name={file ? "description" : "upload_file"} /></span>
+        <span className="dz-icon"><Icon name={file ? "file" : "upload"} /></span>
         {file ? (
           <>
             <span className="title-medium dz-name">{file.name}</span>
@@ -64,7 +64,7 @@ export default function UploadForm({ onSubmit, serverError }) {
       )}
 
       <md-filled-button type="submit" disabled={attr(!file)} class="submit">
-        <span slot="icon" className="material-symbols-outlined">fact_check</span>
+        <Icon name="check" slot="icon" />
         Проверить документ
       </md-filled-button>
     </form>

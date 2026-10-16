@@ -73,7 +73,7 @@ md-filled-button, md-outlined-button { --md-filled-button-container-height: 40px
 .dropzone.has-file { border-style: solid; border-color: var(--md-sys-color-primary); }
 .dz-icon { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; margin-bottom: 8px;
   background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container); }
-.dz-icon .material-symbols-outlined { font-size: 28px; }
+.dz-icon svg { width: 28px; height: 28px; }
 .dropzone .title-medium { color: var(--md-sys-color-on-surface); }
 .dz-name { word-break: break-all; }
 .submit { margin-top: 24px; align-self: flex-start; }
@@ -84,14 +84,15 @@ md-filled-button, md-outlined-button { --md-filled-button-container-height: 40px
 .summary { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 20px 24px; border-radius: var(--shape-lg); }
 .summary-ok { background: var(--md-sys-color-tertiary-container); color: var(--md-sys-color-on-tertiary-container); }
 .summary-bad { background: var(--md-sys-color-error-container); color: var(--md-sys-color-on-error-container); }
-.summary-icon .material-symbols-outlined { font-size: 40px; }
+.summary-icon svg { width: 40px; height: 40px; display: block; }
 .summary-text { flex: 1; min-width: 220px; }
 .summary-text .body-medium { opacity: .85; word-break: break-all; }
 .summary md-outlined-button { --md-outlined-button-label-text-color: currentColor; --md-outlined-button-icon-color: currentColor; --md-outlined-button-outline-color: currentColor; }
 
 .notes { margin: 16px 0; display: flex; flex-direction: column; gap: 8px; color: var(--md-sys-color-on-surface-variant); }
 .notes li, .note { display: flex; gap: 8px; align-items: flex-start; }
-.notes .material-symbols-outlined, .note .material-symbols-outlined, .banner .material-symbols-outlined { font-size: 20px; flex-shrink: 0; }
+.notes svg, .note svg, .banner svg { width: 20px; height: 20px; flex-shrink: 0; }
+svg { flex-shrink: 0; }
 .clean-msg { margin-top: 24px; color: var(--md-sys-color-tertiary); }
 
 .accordion { margin-top: 12px; border-radius: var(--shape-md); background: var(--md-sys-color-surface-container-low); overflow: hidden; }

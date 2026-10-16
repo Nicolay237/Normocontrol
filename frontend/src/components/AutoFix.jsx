@@ -42,7 +42,7 @@ export default function AutoFix({ file, profileKey }) {
         )}
 
         <md-filled-button href={fixedUrl(r.download_id)} download="">
-          <span slot="icon" className="material-symbols-outlined">download</span>
+          <Icon name="download" slot="icon" />
           Скачать исправленный файл
         </md-filled-button>
 
@@ -72,7 +72,7 @@ export default function AutoFix({ file, profileKey }) {
       </p>
       {state.phase === "loading" && <md-linear-progress indeterminate="" class="progress" />}
       <md-filled-button onClick={run} disabled={attr(state.phase === "loading")}>
-        <span slot="icon" className="material-symbols-outlined">auto_fix_high</span>
+        <Icon name="fix" slot="icon" />
         {state.phase === "loading" ? "Исправляем…" : "Исправить и скачать"}
       </md-filled-button>
       {state.error && (

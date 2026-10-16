@@ -51,7 +51,7 @@ export default function CheckPage({ profileKey }) {
         )}
         <div className="reset">
           <md-text-button onClick={() => setState(IDLE)}>
-            <span slot="icon" className="material-symbols-outlined">arrow_back</span>
+            <Icon name="back" slot="icon" />
             Проверить другой файл
           </md-text-button>
         </div>
@@ -64,7 +64,7 @@ export default function CheckPage({ profileKey }) {
       <h1 className="display-small hero-title">{profile.title}</h1>
       <p className="body-large supporting">{profile.description}</p>
       <div className="banner banner-info body-medium">
-        <Icon name="lightbulb" />
+        <Icon name="hint" />
         <span>
           <b>Загружайте только текст самой работы</b> — от «Введения» до приложений.
           Титульный лист, задание, отзыв и рецензию лучше убрать: они оформляются по другим правилам.

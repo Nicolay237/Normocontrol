@@ -3,8 +3,8 @@ import { useProfiles } from "../ProfilesContext.jsx";
 import { Icon } from "../ui.jsx";
 
 const CARDS = [
-  { key: "vkr", icon: "school", fallback: "Выпускная квалификационная работа" },
-  { key: "coursework", icon: "menu_book", fallback: "Курсовая работа" },
+  { key: "vkr", icon: "vkr", fallback: "Выпускная квалификационная работа" },
+  { key: "coursework", icon: "coursework", fallback: "Курсовая работа" },
 ];
 
 export default function Home({ notFound }) {
@@ -26,7 +26,7 @@ export default function Home({ notFound }) {
               <span className="card-icon"><Icon name={icon} /></span>
               <h2 className="title-large">{p?.title ?? fallback}</h2>
               <p className="body-medium">{p?.description ?? ""}</p>
-              <span className="card-action label-large">Проверить <Icon name="arrow_forward" /></span>
+              <span className="card-action label-large">Проверить <Icon name="forward" size={18} /></span>
             </Link>
           );
         })}

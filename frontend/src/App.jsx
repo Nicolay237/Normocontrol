@@ -9,7 +9,7 @@ export default function App() {
     <ProfilesProvider>
       <header className="app-bar">
         <Link to="/" className="brand title-large">
-          <span className="brand-mark"><Icon name="task_alt" /></span>
+          <span className="brand-mark"><Icon name="brand" /></span>
           Нормоконтроль
         </Link>
         <nav className="tabs" aria-label="Тип работы">

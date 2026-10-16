@@ -1,7 +1,33 @@
+import {
+  ArrowLeft, ArrowRight, BookOpen, ChevronDown, CircleAlert, CircleCheck, CircleCheckBig, Download,
+  FileText, FileUp, GraduationCap, Info, Lightbulb, ListChecks, OctagonAlert, WandSparkles,
+} from "lucide-react";
+
 // Custom elements в React 18 получают атрибуты как строки: disabled={false} стал бы "false" (= включено),
 // поэтому булевы атрибуты передаём через эту функцию.
 export const attr = (cond) => (cond ? "" : undefined);
 
-export const Icon = ({ name }) => (
-  <span className="material-symbols-outlined" aria-hidden="true">{name}</span>
-);
+const ICONS = {
+  brand: CircleCheckBig,
+  error: CircleAlert,
+  info: Info,
+  chevron: ChevronDown,
+  ok: CircleCheck,
+  report: OctagonAlert,
+  file: FileText,
+  upload: FileUp,
+  hint: Lightbulb,
+  vkr: GraduationCap,
+  coursework: BookOpen,
+  forward: ArrowRight,
+  back: ArrowLeft,
+  download: Download,
+  fix: WandSparkles,
+  check: ListChecks,
+};
+
+/** Иконка Lucide по короткому имени. Лишние props (например slot="icon" для кнопок M3) уходят на <svg>. */
+export const Icon = ({ name, size = 24, ...props }) => {
+  const Cmp = ICONS[name];
+  return Cmp ? <Cmp size={size} strokeWidth={1.75} aria-hidden="true" {...props} /> : null;
+};
