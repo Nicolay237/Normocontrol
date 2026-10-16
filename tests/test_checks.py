@@ -351,3 +351,21 @@ def test_unknown_profile(tmp_path):
     md.good_document().save(f)
     with pytest.raises(ValueError):
         run_normocontrol(str(f), "nope")
+
+
+def test_page_number_inside_content_control_is_found(tmp_path):
+    # Word кладёт «Номер страницы» из галереи в <w:sdt> — раньше это давало ложное «номера не найдены»
+    from docx.oxml import OxmlElement
+    doc = md.new_document(page_numbers=False)
+    md.body(doc)
+    footer = doc.sections[0].footer
+    p = footer.paragraphs[0]
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    sdt = OxmlElement("w:sdt")
+    content = OxmlElement("w:sdtContent")
+    sdt.append(content)
+    footer._element.remove(p._p)
+    content.append(p._p)
+    footer._element.append(sdt)
+    md._page_field(p)
+    assert "Нумерация страниц" not in cats(check(doc, tmp_path))

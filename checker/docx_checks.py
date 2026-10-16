@@ -4,6 +4,7 @@
 import re
 from docx import Document
 from docx.oxml.ns import qn
+from docx.text.paragraph import Paragraph
 
 from .docx_utils import (
     Resolver, iter_blocks, get_all_runs, run_in_hyperlink, has_image,
@@ -244,19 +245,20 @@ class DocxChecker:
             return
         found, bad_align = False, None
         for s in self.doc.sections:
-            for part in (s.footer, s.header):
-                if part is None:
+            for part, is_footer in ((s.footer, True), (s.header, False)):
+                if part is None or part.is_linked_to_previous:
                     continue
-                for p in part.paragraphs:
-                    xml = p._p.xml
+                # обходим весь XML колонтитула: Word кладёт номер в <w:sdt>, которого нет в part.paragraphs
+                for p_el in part._element.iter(qn('w:p')):
+                    xml = p_el.xml
                     if "PAGE" in xml and ("instrText" in xml or "fldSimple" in xml):
                         found = True
-                        if part is s.footer:
-                            al = self.res.alignment(p)
-                            has_tab = "\t" in p.text or "<w:tab/>" in xml
-                            if al in ("left", "right", "justify") and not has_tab:
-                                bad_align = al
-                        elif part is s.header:
+                        if is_footer:
+                            p = Paragraph(p_el, part)
+                            has_tab = "<w:tab/>" in xml
+                            if self.res.alignment(p) in ("left", "right", "justify") and not has_tab:
+                                bad_align = self.res.alignment(p)
+                        else:
                             bad_align = bad_align or "header"
         if not found:
             self.report.add("Документ", "Нумерация страниц",
