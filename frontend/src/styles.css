@@ -1,0 +1,130 @@
+/* Компоновка и компоненты Material 3 (кнопки, прогресс — из @material/web) */
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0; background: var(--md-sys-color-surface); color: var(--md-sys-color-on-surface);
+  font: 400 16px/24px var(--md-ref-typeface-plain);
+}
+a { color: inherit; text-decoration: none; }
+h1, h2, h3, p, dl, dd, ul { margin: 0; }
+ul { padding: 0; list-style: none; }
+
+md-filled-button, md-filled-tonal-button, md-outlined-button, md-text-button { --md-filled-button-container-shape: 20px; --md-outlined-button-container-shape: 20px; --md-text-button-container-shape: 20px; }
+md-filled-button, md-outlined-button { --md-filled-button-container-height: 40px; }
+
+/* ── top app bar ── */
+.app-bar {
+  display: flex; align-items: center; gap: 24px; flex-wrap: wrap;
+  min-height: 64px; padding: 8px clamp(16px, 4vw, 40px);
+  background: var(--md-sys-color-surface-container); position: sticky; top: 0; z-index: 5;
+}
+.brand { display: flex; align-items: center; gap: 12px; color: var(--md-sys-color-on-surface); }
+.brand-mark {
+  display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%;
+  background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary);
+}
+.tabs { display: flex; gap: 4px; margin-left: 8px; }
+.tab {
+  position: relative; display: flex; align-items: center; height: 40px; padding: 0 16px; border-radius: 20px;
+  color: var(--md-sys-color-on-surface-variant); overflow: hidden;
+}
+.tab.active { background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container); }
+.gost { margin-left: auto; color: var(--md-sys-color-on-surface-variant); padding: 4px 12px; border-radius: 8px; border: 1px solid var(--md-sys-color-outline-variant); }
+
+/* ── страницы ── */
+.page { max-width: 960px; margin: 0 auto; padding: clamp(24px, 5vw, 56px) clamp(16px, 4vw, 40px) 56px; }
+.hero-title { max-width: 24ch; margin-bottom: 16px; font-weight: 400; }
+.supporting { color: var(--md-sys-color-on-surface-variant); max-width: 62ch; margin-bottom: 24px; }
+.eyebrow { color: var(--md-sys-color-primary); margin-bottom: 8px; }
+.reset { display: flex; justify-content: center; margin-top: 24px; }
+
+.loading { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 48px 0; color: var(--md-sys-color-on-surface-variant); }
+
+/* ── карточки M3 ── */
+.card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-top: 32px; }
+.card-grid-sm { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); margin-top: 16px; }
+.card { position: relative; border-radius: var(--shape-md); padding: 20px 24px; overflow: hidden; }
+.card-filled { background: var(--md-sys-color-surface-container-highest); }
+.card-outlined { background: var(--md-sys-color-surface); border: 1px solid var(--md-sys-color-outline-variant); }
+.card-tonal { background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container); }
+.card-link { display: flex; flex-direction: column; gap: 8px; padding: 24px; color: inherit; }
+.card-link p { color: var(--md-sys-color-on-surface-variant); flex: 1; }
+.card-icon { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; margin-bottom: 8px;
+  background: var(--md-sys-color-primary-container); color: var(--md-sys-color-on-primary-container); }
+.card-action { display: inline-flex; align-items: center; gap: 8px; color: var(--md-sys-color-primary); margin-top: 8px; }
+.card-outlined dt { margin-bottom: 4px; }
+.card-outlined dd { color: var(--md-sys-color-on-surface-variant); }
+
+/* ── баннеры ── */
+.banner { display: flex; gap: 12px; align-items: flex-start; padding: 12px 16px; border-radius: var(--shape-md); margin-bottom: 24px; }
+.banner-info { background: var(--md-sys-color-primary-container); color: var(--md-sys-color-on-primary-container); }
+.banner-error { background: var(--md-sys-color-error-container); color: var(--md-sys-color-on-error-container); margin: 16px 0 0; }
+
+/* ── загрузка файла ── */
+.upload { max-width: 640px; display: flex; flex-direction: column; }
+.dropzone {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; cursor: pointer; overflow: hidden;
+  padding: 36px 24px; border-radius: var(--shape-lg); border: 2px dashed var(--md-sys-color-outline);
+  background: var(--md-sys-color-surface-container-low); color: var(--md-sys-color-on-surface-variant);
+  transition: border-color .15s, background .15s;
+}
+.dropzone.drag { border-color: var(--md-sys-color-primary); background: var(--md-sys-color-primary-container); color: var(--md-sys-color-on-primary-container); }
+.dropzone.has-file { border-style: solid; border-color: var(--md-sys-color-primary); }
+.dz-icon { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; margin-bottom: 8px;
+  background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container); }
+.dz-icon svg { width: 28px; height: 28px; }
+.dropzone .title-medium { color: var(--md-sys-color-on-surface); }
+.dz-name { word-break: break-all; }
+.submit { margin-top: 24px; align-self: flex-start; }
+
+.norms { margin-top: 56px; }
+
+/* ── отчёт ── */
+.summary { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 20px 24px; border-radius: var(--shape-lg); }
+.summary-ok { background: var(--md-sys-color-tertiary-container); color: var(--md-sys-color-on-tertiary-container); }
+.summary-bad { background: var(--md-sys-color-error-container); color: var(--md-sys-color-on-error-container); }
+.summary-icon svg { width: 40px; height: 40px; display: block; }
+.summary-text { flex: 1; min-width: 220px; }
+.summary-text .body-medium { opacity: .85; word-break: break-all; }
+.summary md-outlined-button { --md-outlined-button-label-text-color: currentColor; --md-outlined-button-icon-color: currentColor; --md-outlined-button-outline-color: currentColor; }
+
+.notes { margin: 16px 0; display: flex; flex-direction: column; gap: 8px; color: var(--md-sys-color-on-surface-variant); }
+.notes li, .note { display: flex; gap: 8px; align-items: flex-start; }
+.notes svg, .note svg, .banner svg { width: 20px; height: 20px; flex-shrink: 0; }
+svg { flex-shrink: 0; }
+.clean-msg { margin-top: 24px; color: var(--md-sys-color-tertiary); }
+
+.accordion { margin-top: 12px; border-radius: var(--shape-md); background: var(--md-sys-color-surface-container-low); overflow: hidden; }
+.accordion summary { display: flex; align-items: center; gap: 12px; padding: 14px 16px 14px 24px; cursor: pointer; list-style: none; }
+.accordion summary::-webkit-details-marker { display: none; }
+.accordion summary > span:first-child { flex: 1; }
+.accordion[open] .chevron { transform: rotate(180deg); }
+.chevron { display: grid; transition: transform .2s; color: var(--md-sys-color-on-surface-variant); }
+.badge { min-width: 24px; padding: 2px 8px; border-radius: 12px; text-align: center; background: var(--md-sys-color-error); color: var(--md-sys-color-on-error); }
+
+.issue-list li { display: flex; flex-direction: column; gap: 2px; padding: 12px 24px; border-top: 1px solid var(--md-sys-color-outline-variant); }
+.issue-loc { color: var(--md-sys-color-on-surface-variant); word-break: break-word; }
+.more { margin: 4px 12px 8px; }
+
+/* ── автоисправление ── */
+.autofix { margin-top: 24px; display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding: 24px; border-radius: var(--shape-lg); }
+.autofix .progress { width: 100%; }
+.chip-set { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border-radius: 8px;
+  border: 1px solid var(--md-sys-color-outline); color: var(--md-sys-color-on-secondary-container); }
+.chip b { font-weight: 500; opacity: .7; }
+.remaining { width: 100%; background: var(--md-sys-color-surface); border-radius: var(--shape-md); padding-top: 12px; color: var(--md-sys-color-on-surface); }
+.remaining h3 { padding: 0 24px 8px; }
+.autofix .note { opacity: .85; }
+
+/* ── футер ── */
+.app-footer { max-width: 960px; margin: 0 auto; padding: 24px clamp(16px, 4vw, 40px) 40px; text-align: center; color: var(--md-sys-color-on-surface-variant); border-top: 1px solid var(--md-sys-color-outline-variant); }
+
+@media (max-width: 640px) {
+  .display-small { font-size: 30px; line-height: 38px; }
+  .gost { display: none; }
+  .tabs { margin-left: auto; }
+}
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .chevron { transition: none; } }
+a:focus-visible, label:focus-within, summary:focus-visible { outline: 2px solid var(--md-sys-color-primary); outline-offset: 2px; }
