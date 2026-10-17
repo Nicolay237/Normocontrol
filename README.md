@@ -18,10 +18,23 @@ npm run dev                         # React на http://localhost:5173 (прок
 ```bash
 cd frontend && npm install && npm run build && cd ..
 pip install -r requirements.txt
-gunicorn app:app --bind 0.0.0.0:8080 --workers 2 --timeout 120
+gunicorn app:app --bind 0.0.0.0:8080 --workers 1 --threads 8 --timeout 120
 ```
 
 Flask раздаёт собранный фронтенд из `frontend/dist`.
+
+## Деплой на Render
+
+В репозитории есть `render.yaml`: на render.com → **New → Blueprint** → выбрать репозиторий,
+Render соберёт сервис по `Dockerfile` (фронтенд собирается внутри образа) и будет
+передеплоивать его на каждый push в `master`.
+
+Вручную: **New → Web Service** → репозиторий → Runtime **Docker**, Health Check Path `/health`,
+переменная `EDITION=university`.
+
+Важно: сервер работает одним процессом с потоками (`--workers 1 --threads 8`) — отчёты и
+исправленные файлы для скачивания хранятся в памяти процесса. Тариф free засыпает после
+15 минут простоя (первый запрос после этого ~1 минута) и при перезапуске теряет эти файлы.
 
 ## Docker
 
