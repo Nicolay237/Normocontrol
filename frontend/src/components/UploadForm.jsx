@@ -54,12 +54,12 @@ export default function UploadForm({ onSubmit, serverError }) {
             <span className="body-medium dz-hint">.docx или .pdf, до 20&nbsp;МБ</span>
           </>
         )}
-        <input type="file" accept=".docx,.pdf" hidden onChange={(e) => pick(e.target.files[0])} />
+        <input type="file" accept=".docx,.pdf" className="visually-hidden" onChange={(e) => pick(e.target.files[0])} />
       </label>
 
       {message && (
         <div className="banner banner-error body-medium" role="alert">
-          <Icon name="error" /> {message}
+          <Icon name="error" /><span>{message}</span>
         </div>
       )}
 

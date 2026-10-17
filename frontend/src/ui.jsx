@@ -1,5 +1,5 @@
 import {
-  ArrowLeft, ArrowRight, BookOpen, ChevronDown, CircleAlert, CircleCheck, CircleCheckBig, Download,
+  ArrowLeft, ArrowRight, BookOpen, Check, ChevronDown, CircleAlert, CircleCheck, CircleCheckBig, Download,
   FileText, FileUp, GraduationCap, Info, Lightbulb, ListChecks, OctagonAlert, WandSparkles,
 } from "lucide-react";
 
@@ -24,6 +24,7 @@ const ICONS = {
   download: Download,
   fix: WandSparkles,
   check: ListChecks,
+  tick: Check,
 };
 
 /** Иконка Lucide по короткому имени. Лишние props (например slot="icon" для кнопок M3) уходят на <svg>. */

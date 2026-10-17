@@ -18,7 +18,7 @@ npm run dev                         # React на http://localhost:5173 (прок
 ```bash
 cd frontend && npm install && npm run build && cd ..
 pip install -r requirements.txt
-gunicorn app:app --bind 0.0.0.0:8080 --workers 2 --timeout 60
+gunicorn app:app --bind 0.0.0.0:8080 --workers 2 --timeout 120
 ```
 
 Flask раздаёт собранный фронтенд из `frontend/dist`.

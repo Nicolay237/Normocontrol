@@ -8,7 +8,7 @@ from docx.text.paragraph import Paragraph
 
 from .docx_utils import (
     Resolver, iter_blocks, get_all_runs, run_in_hyperlink, has_image,
-    is_formula, has_page_break, starts_with_page_break, preview, emu_to_cm, build_page_map,
+    is_formula, has_page_break, starts_with_page_break, preview, style_name, emu_to_cm, build_page_map,
 )
 from .norms import STRUCTURAL_HEADINGS
 from .typography import check_typography
@@ -64,13 +64,13 @@ def _structural_name(text):
 
 
 def _toc_level(p):
-    name = (p.style.name if p.style else "").strip().lower()
+    name = style_name(p).strip().lower()
     m = re.match(r"(?:toc|оглавлени[ея]|содержани[ея])\s*(\d+)", name)
     return int(m.group(1)) if m else None
 
 
 def _is_toc(p):
-    name = (p.style.name if p.style else "").lower()
+    name = style_name(p).lower()
     if "toc" in name or "оглавлен" in name or "содержан" in name:
         # сам заголовок «СОДЕРЖАНИЕ» может иметь стиль «TOC Heading»
         return _toc_level(p) is not None
@@ -78,7 +78,7 @@ def _is_toc(p):
 
 
 def _heading_level(p):
-    name = (p.style.name if p.style else "").strip()
+    name = style_name(p).strip()
     m = HEADING_STYLE_RE.match(name)
     return int(m.group(1)) if m else None
 
@@ -133,7 +133,7 @@ class DocxChecker:
                 continue
             p = it["obj"]
             text = p.text.strip()
-            sname = (p.style.name if p.style else "").strip().lower()
+            sname = style_name(p).strip().lower()
 
             if is_formula(p):  # текст формулы python-docx не отдаёт — абзац выглядит пустым
                 it["role"] = "formula"
@@ -207,11 +207,6 @@ class DocxChecker:
 
     def run(self):
         items = self.prepare()
-        self.report.note(
-            "Номера страниц в замечаниях взяты из разметки Word и точны." if self.exact else
-            "Номера страниц в замечаниях — приблизительная оценка по объёму текста "
-            "(файл не содержит разметки Word), реальная разбивка может отличаться."
-        )
         self.check_page_setup()
         self.check_page_numbers()
         self.check_body(items)
@@ -226,6 +221,12 @@ class DocxChecker:
              for it in items if it["kind"] == "p" and it["role"] not in ("toc", "skip")],
             self.report,
         )
+        if self.report.issues:  # заметка о точности номеров страниц нужна, только если есть замечания
+            self.report.note(
+                "Номера страниц в замечаниях взяты из разметки Word и точны." if self.exact else
+                "Номера страниц в замечаниях — приблизительная оценка по объёму текста "
+                "(файл не содержит разметки Word), реальная разбивка может отличаться."
+            )
 
     # ── страница ─────────────────────────────────────────────────────────
 

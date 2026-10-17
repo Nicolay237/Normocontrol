@@ -59,21 +59,92 @@ class Report:
 
 
 # ── автономный HTML-отчёт для скачивания ──────────────────────────────────
+# Тот же дизайн, что у сайта (Material 3, иконки Lucide), но одним файлом:
+# CSS и SVG встроены, работает офлайн, светлая/тёмная тема, версия для печати.
+
+_ICONS = {
+    "brand": '<path d="M21.801 10A10 10 0 1 1 17 3.335"/><path d="m9 11 3 3L22 4"/>',
+    "ok": '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
+    "bad": ('<path d="M12 16h.01"/><path d="M12 8v4"/><path d="M15.312 2a2 2 0 0 1 1.414.586l4.688 4.688A2 2 0 '
+            '0 1 22 8.688v6.624a2 2 0 0 1-.586 1.414l-4.688 4.688a2 2 0 0 1-1.414.586H8.688a2 2 0 0 1-1.414-.586'
+            'l-4.688-4.688A2 2 0 0 1 2 15.312V8.688a2 2 0 0 1 .586-1.414l4.688-4.688A2 2 0 0 1 8.688 2z"/>'),
+    "info": '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
+    "chevron": '<path d="m6 9 6 6 6-6"/>',
+}
+
+
+def _svg(name, size=24):
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}" viewBox="0 0 24 24" '
+            f'fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" '
+            f'stroke-linejoin="round" aria-hidden="true">{_ICONS[name]}</svg>')
+
+
+def plural_issues(n):
+    if n % 10 == 1 and n % 100 != 11:
+        return "замечание"
+    if n % 10 in (2, 3, 4) and n % 100 not in (12, 13, 14):
+        return "замечания"
+    return "замечаний"
+
 
 _CSS = """
-:root{--paper:#f6f2e8;--ink:#23241f;--soft:#5b5a52;--red:#a3323d;--green:#3f6b46;--line:#ddd5c0}
-body{margin:0;padding:40px 20px;background:var(--paper);color:var(--ink);
- font-family:Georgia,"Times New Roman",serif;line-height:1.5}
-.card{max-width:860px;margin:0 auto;background:#fffdf8;border:1px solid var(--line);padding:40px 48px}
-h1{font-size:26px;margin:0 0 6px}.meta{color:var(--soft);font-size:14px}
-.stamp{display:inline-block;margin:18px 0;padding:8px 16px;border:3px solid;border-radius:6px;font-weight:bold}
-.bad{color:var(--red)}.ok{color:var(--green)}
-details{border:1px solid var(--line);border-radius:4px;margin-bottom:12px}
-summary{cursor:pointer;padding:10px 16px;font-weight:bold;display:flex;justify-content:space-between}
-table{width:100%;border-collapse:collapse;font-size:14px}
-td{padding:7px 16px;border-top:1px solid var(--line);vertical-align:top}
-td.loc{width:40%;color:var(--soft);font-size:12.5px}
-.notes{color:var(--soft);font-size:14px}
+:root{color-scheme:light;
+ --primary:#9b2c3a;--on-primary:#fff;
+ --error:#ba1a1a;--on-error:#fff;--error-container:#ffdad6;--on-error-container:#410002;
+ --ok:#2e6a3b;--ok-container:#b0f2b5;--on-ok-container:#00210c;
+ --surface:#fff8f7;--on-surface:#231918;--on-surface-variant:#534342;--outline-variant:#d8c2c0;
+ --sc-low:#fff0ef}
+@media (prefers-color-scheme:dark){:root{color-scheme:dark;
+ --primary:#ffb3b2;--on-primary:#5f1220;
+ --error:#ffb4ab;--on-error:#690005;--error-container:#93000a;--on-error-container:#ffdad6;
+ --ok:#95d59a;--ok-container:#145226;--on-ok-container:#b0f2b5;
+ --surface:#1a1111;--on-surface:#f1dedd;--on-surface-variant:#d8c2c0;--outline-variant:#534342;
+ --sc-low:#231919}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--surface);color:var(--on-surface);
+ font:400 14px/20px Roboto,"Segoe UI",system-ui,-apple-system,sans-serif;letter-spacing:.25px}
+.wrap{max-width:920px;margin:0 auto;padding:24px 16px 48px}
+.bar{display:flex;align-items:center;gap:12px;margin-bottom:24px;font-size:20px;line-height:28px}
+.mark{display:grid;place-items:center;width:36px;height:36px;border-radius:50%;background:var(--primary);color:var(--on-primary)}
+.mark svg{width:20px;height:20px}
+.tag{margin-left:auto;font-size:12px;line-height:16px;font-weight:500;color:var(--on-surface-variant);padding:4px 10px;
+ border:1px solid var(--outline-variant);border-radius:8px}
+.summary{display:flex;gap:16px;align-items:flex-start;padding:20px 24px;border-radius:16px;
+ background:var(--sc-low);border:1px solid var(--outline-variant)}
+.s-icon{display:grid;place-items:center;flex-shrink:0;width:48px;height:48px;border-radius:50%}
+.s-icon.bad{background:var(--error-container);color:var(--on-error-container)}
+.s-icon.ok{background:var(--ok-container);color:var(--on-ok-container)}
+.headline{font-size:24px;line-height:32px;font-weight:400;margin:0 0 4px}
+.file{font-weight:500;font-size:16px;line-height:24px;overflow-wrap:anywhere}
+.meta{color:var(--on-surface-variant)}
+.overview{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 0;padding:0;list-style:none}
+.overview a{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:4px 12px;border-radius:8px;
+ border:1px solid var(--outline-variant);color:var(--on-surface);text-decoration:none;font-weight:500}
+.overview b{color:var(--error);font-weight:500}
+.notes{list-style:none;padding:0;margin:16px 0;color:var(--on-surface-variant);display:grid;gap:8px}
+.notes li{display:flex;gap:8px}.notes svg{width:18px;height:18px;flex-shrink:0;margin-top:1px}
+.clean{color:var(--ok);font-size:16px;line-height:24px;margin-top:16px}
+details{margin-top:12px;border-radius:12px;background:var(--sc-low);overflow:hidden}
+summary{display:flex;align-items:center;gap:12px;padding:14px 16px 14px 24px;cursor:pointer;list-style:none;
+ font-weight:500;font-size:16px;line-height:24px}
+summary::-webkit-details-marker{display:none}
+summary .name{flex:1}
+.badge{min-width:24px;padding:2px 8px;border-radius:12px;text-align:center;font-size:12px;line-height:16px;
+ background:var(--error);color:var(--on-error)}
+.chev{display:grid;color:var(--on-surface-variant);transition:transform .2s}
+details[open] .chev{transform:rotate(180deg)}
+ul.issues{list-style:none;margin:0;padding:0}
+ul.issues li{padding:12px 24px;border-top:1px solid var(--outline-variant)}
+.msg{display:block}.loc{display:block;margin-top:2px;font-size:12px;line-height:16px;font-weight:500;
+ color:var(--on-surface-variant);overflow-wrap:anywhere}
+footer{margin-top:32px;padding-top:16px;border-top:1px solid var(--outline-variant);color:var(--on-surface-variant);
+ font-size:12px;text-align:center}
+@media (max-width:560px){.summary{flex-direction:column}.tag{display:none}}
+@media print{:root{color-scheme:light}
+ body{background:#fff;color:#000}.wrap{max-width:none;padding:0}
+ .summary,details{background:none;border:1px solid #ccc}
+ .overview a{border-color:#ccc}.chev{display:none}
+ ul.issues li{break-inside:avoid}}
 """
 
 
@@ -81,25 +152,46 @@ def build_html_report(report, source_name):
     e = html_lib.escape
     clean = report.is_clean()
     total = len(report.issues)
-    stamp = ("СООТВЕТСТВУЕТ НОРМАМ" if clean else f"ЗАМЕЧАНИЙ: {total}")
-    sections = ""
-    for category, items in report.by_category().items():
-        rows = "".join(
-            f'<tr><td class="loc">{e(i.location)}</td><td>{e(i.message)}</td></tr>' for i in items
-        )
-        sections += (f'<details open><summary><span>{e(category)}</span><span>{len(items)}</span>'
-                     f'</summary><table>{rows}</table></details>')
-    notes = "".join(f"<li>{e(n)}</li>" for n in report.notes)
+    cats = report.by_category()
+    headline = "Соответствует нормам" if clean else f"{total} {plural_issues(total)}"
+
+    overview = "" if clean else '<ul class="overview">' + "".join(
+        f'<li><a href="#cat-{i}">{e(name)} <b>{len(items)}</b></a></li>'
+        for i, (name, items) in enumerate(cats.items())) + "</ul>"
+
+    sections = "".join(
+        f'<details open id="cat-{i}"><summary><span class="name">{e(name)}</span>'
+        f'<span class="badge">{len(items)}</span><span class="chev">{_svg("chevron")}</span></summary>'
+        '<ul class="issues">' + "".join(
+            f'<li><span class="msg">{e(it.message)}</span><span class="loc">{e(it.location)}</span></li>'
+            for it in items) + "</ul></details>"
+        for i, (name, items) in enumerate(cats.items()))
+
+    notes = "".join(f"<li>{_svg('info')}<span>{e(n)}</span></li>" for n in report.notes)
     body = (f'<ul class="notes">{notes}</ul>' if notes else "") + (
-        "<p class='ok'>Замечаний не обнаружено.</p>" if clean else sections)
+        '<p class="clean">Замечаний не обнаружено. Документ соответствует заданным нормам.</p>'
+        if clean else sections)
+    kind = "ok" if clean else "bad"
+
     return f"""<!DOCTYPE html>
 <html lang="ru"><head><meta charset="utf-8">
-<title>Нормоконтроль — {e(source_name)}</title><style>{_CSS}</style></head>
-<body><div class="card">
-<h1>Отчёт нормоконтроля</h1>
-<div class="meta">{e(source_name)} · {e(report.profile_title)} · {datetime.now().strftime('%d.%m.%Y %H:%M')}</div>
-<div class="stamp {'ok' if clean else 'bad'}">{stamp}</div>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Отчёт нормоконтроля — {e(source_name)}</title><style>{_CSS}</style></head>
+<body><div class="wrap">
+<div class="bar"><span class="mark">{_svg("brand")}</span>Нормоконтроль<span class="tag">ГОСТ 7.32-2017</span></div>
+<div class="summary">
+  <span class="s-icon {kind}">{_svg(kind)}</span>
+  <div>
+    <h1 class="headline">{headline}</h1>
+    <div class="file">{e(source_name)}</div>
+    <div class="meta">{e(report.profile_title)} · проверено {datetime.now().strftime('%d.%m.%Y %H:%M')}</div>
+    {overview}
+  </div>
+</div>
 {body}
+<footer>Нормы: ГОСТ 7.32-2017. Отчёт даёт предварительную оценку — окончательное решение остаётся
+за нормоконтролем кафедры.</footer>
 </div></body></html>"""
 
 

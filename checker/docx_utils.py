@@ -96,6 +96,37 @@ def style_chain(style):
         style = style.base_style
 
 
+def para_style(p):
+    """
+    Стиль абзаца с кешем по id стиля. p.style в python-docx при каждом вызове
+    заново ищет стиль по умолчанию среди всех стилей — на большой работе это
+    десятки тысяч обходов и основная часть времени проверки.
+    """
+    cache = p.part.__dict__.setdefault('_nc_pstyle', {})
+    ppr = p._p.pPr
+    sid = ppr.pStyle.val if ppr is not None and ppr.pStyle is not None else None
+    if sid not in cache:
+        cache[sid] = p.style
+    return cache[sid]
+
+
+def run_style(run):
+    """Стиль символа run'а (или None) с кешем по id стиля."""
+    rpr = run._r.rPr
+    if rpr is None or rpr.rStyle is None:
+        return None
+    sid = rpr.rStyle.val
+    cache = run.part.__dict__.setdefault('_nc_rstyle', {})
+    if sid not in cache:
+        cache[sid] = run.style
+    return cache[sid]
+
+
+def style_name(p):
+    st = para_style(p)
+    return st.name if st is not None else ""
+
+
 def _on(el):
     """Булево свойство <w:b/>, <w:u/>…: отсутствие w:val = включено."""
     if el is None:
@@ -141,22 +172,21 @@ class Resolver:
     # -- уровни наследования
     def _para_levels(self, p):
         """pPr: прямое → стили абзаца (с родителями) → docDefaults."""
-        levels = [p._p.pPr]
-        for s in style_chain(p.style):
-            levels.append(s.element.pPr)
-        levels.append(self._ppr_default)
-        return [l for l in levels if l is not None]
+        return [l for l in [p._p.pPr] + self._chain(para_style(p), 'pPr') + [self._ppr_default]
+                if l is not None]
+
+    def _chain(self, style, kind):
+        """pPr/rPr стиля и его родителей (кешируется по стилю)."""
+        if style is None:
+            return []
+        key = (style.style_id, style.type, kind)
+        if key not in self._cache:
+            self._cache[key] = [getattr(s.element, kind) for s in style_chain(style)]
+        return self._cache[key]
 
     def _run_levels(self, run, p):
         """rPr: прямое → стиль символа → стили абзаца → docDefaults."""
-        levels = [run._r.rPr]
-        rstyle = run.style
-        if rstyle is not None:
-            for s in style_chain(rstyle):
-                levels.append(s.element.rPr)
-        for s in style_chain(p.style):
-            levels.append(s.element.rPr)
-        levels.append(self._rpr_default)
+        levels = [run._r.rPr] + self._chain(run_style(run), 'rPr')             + self._chain(para_style(p), 'rPr') + [self._rpr_default]
         return [l for l in levels if l is not None]
 
     # -- свойства run'а

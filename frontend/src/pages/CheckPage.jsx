@@ -45,10 +45,11 @@ export default function CheckPage({ profileKey }) {
   if (state.phase === "done")
     return (
       <section className="page">
-        <ReportView report={state.report} />
-        {config.autofix_enabled && (
-          <AutoFix key={state.report.report_id} file={state.file} profileKey={profileKey} />
-        )}
+        <ReportView key={state.report.report_id} report={state.report}>
+          {config.autofix_enabled && !state.report.clean && (
+            <AutoFix file={state.file} profileKey={profileKey} />
+          )}
+        </ReportView>
         <div className="reset">
           <md-text-button onClick={() => setState(IDLE)}>
             <Icon name="back" slot="icon" />
@@ -75,6 +76,7 @@ export default function CheckPage({ profileKey }) {
         <div className="loading">
           <md-circular-progress indeterminate="" />
           <p className="body-large">Разбираем документ…</p>
+          <p className="body-medium">Обычно это занимает несколько секунд, большие работы — до минуты.</p>
         </div>
       ) : (
         <UploadForm onSubmit={onSubmit} serverError={state.error} />

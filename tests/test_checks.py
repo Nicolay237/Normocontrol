@@ -369,3 +369,19 @@ def test_page_number_inside_content_control_is_found(tmp_path):
     footer._element.append(sdt)
     md._page_field(p)
     assert "Нумерация страниц" not in cats(check(doc, tmp_path))
+
+
+def test_html_report_is_self_contained_new_design(tmp_path):
+    from checker import build_html_report
+    doc = md.good_document()
+    doc.styles["Normal"].paragraph_format.line_spacing = 1.0
+    r = check(doc, tmp_path)
+    html = build_html_report(r, "работа <тест>.docx")
+    assert 'class="summary"' in html and 'class="overview"' in html
+    assert "prefers-color-scheme:dark" in html and "@media print" in html
+    assert "работа &lt;тест&gt;.docx" in html          # имя файла экранировано
+    assert "<script" not in html and "http" not in html.split("<body>")[1].replace("http://www.w3.org", "")
+
+
+def test_page_number_note_only_when_issues(tmp_path):
+    assert not any("Номера страниц" in n for n in check(md.good_document(), tmp_path).notes)

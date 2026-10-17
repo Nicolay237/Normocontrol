@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { reportUrl } from "../api.js";
 import { Icon } from "../ui.jsx";
 
 const PAGE = 30;
+const COLLAPSE_OVER = 20; // при большом числе замечаний разделы свёрнуты, обзор — в чипах
 
 export function IssueList({ issues }) {
   return (
@@ -17,10 +18,15 @@ export function IssueList({ issues }) {
   );
 }
 
-function Category({ cat }) {
+function Category({ cat, id, open, onToggle }) {
   const [shown, setShown] = useState(PAGE);
   return (
-    <details className="accordion" open>
+    <details
+      className="accordion"
+      id={id}
+      open={open}
+      onToggle={(e) => onToggle(e.currentTarget.open)}
+    >
       <summary className="title-medium">
         <span>{cat.name}</span>
         <span className="badge label-medium">{cat.count}</span>
@@ -36,37 +42,79 @@ function Category({ cat }) {
   );
 }
 
-function plural(n) {
+export function plural(n) {
   if (n % 10 === 1 && n % 100 !== 11) return "замечание";
   if ([2, 3, 4].includes(n % 10) && ![12, 13, 14].includes(n % 100)) return "замечания";
   return "замечаний";
 }
 
-export default function ReportView({ report }) {
+/** children — блок действий (автоисправление), показывается сразу под сводкой, до списка замечаний. */
+export default function ReportView({ report, children }) {
   const { clean, total, categories, notes } = report;
+  const [open, setOpen] = useState(() => categories.map(() => total <= COLLAPSE_OVER));
+
+  const [scrollTo, setScrollTo] = useState(null);
+
+  // прокрутка к разделу — после того, как он раскрылся и страница перерисовалась
+  useEffect(() => {
+    if (scrollTo === null) return;
+    document.getElementById(`cat-${scrollTo.idx}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [scrollTo]);
+
+  function reveal(idx) {
+    setOpen((o) => o.map((v, i) => (i === idx ? true : v)));
+    setScrollTo({ idx }); // новый объект — повторный клик по тому же чипу тоже прокрутит
+  }
+
   return (
     <div className="report">
-      <div className={`summary ${clean ? "summary-ok" : "summary-bad"}`}>
-        <span className="summary-icon"><Icon name={clean ? "ok" : "report"} /></span>
+      <div className="summary">
+        <span className={`summary-icon ${clean ? "ok" : "bad"}`}><Icon name={clean ? "ok" : "report"} /></span>
         <div className="summary-text">
-          <div className="headline-small">{clean ? "Соответствует нормам" : `${total} ${plural(total)}`}</div>
-          <div className="body-medium">{report.file} · {report.profile.title} · {report.checked_at}</div>
+          <h1 className="headline-small">{clean ? "Соответствует нормам" : `${total} ${plural(total)}`}</h1>
+          <div className="title-medium summary-file">{report.file}</div>
+          <div className="body-medium summary-meta">{report.profile.title} · проверено {report.checked_at}</div>
+          {!clean && (
+            <ul className="overview">
+              {categories.map((c, idx) => (
+                <li key={c.name}>
+                  <button type="button" className="chip label-large" onClick={() => reveal(idx)}>
+                    {c.name}<b>{c.count}</b>
+                    <md-ripple />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
-        <md-outlined-button href={reportUrl(report.report_id)} download="">
+        <md-outlined-button href={reportUrl(report.report_id)} download="" class="summary-download">
           <Icon name="download" slot="icon" />
-          Отчёт .html
+          Скачать отчёт
         </md-outlined-button>
       </div>
 
       {notes.length > 0 && (
         <ul className="notes body-medium">
-          {notes.map((n) => <li key={n}><Icon name="info" /> {n}</li>)}
+          {notes.map((n) => <li key={n}><Icon name="info" /><span>{n}</span></li>)}
         </ul>
       )}
 
-      {clean
-        ? <p className="body-large clean-msg">Замечаний не обнаружено. Документ соответствует заданным нормам.</p>
-        : categories.map((c) => <Category key={c.name} cat={c} />)}
+      {children}
+
+      {!clean && (
+        <>
+          <h2 className="title-large section-title">Замечания</h2>
+          {categories.map((c, idx) => (
+            <Category
+              key={c.name}
+              id={`cat-${idx}`}
+              cat={c}
+              open={open[idx]}
+              onToggle={(v) => setOpen((o) => (o[idx] === v ? o : o.map((x, i) => (i === idx ? v : x))))}
+            />
+          ))}
+        </>
+      )}
     </div>
   );
 }

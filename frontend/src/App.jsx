@@ -10,7 +10,7 @@ export default function App() {
       <header className="app-bar">
         <Link to="/" className="brand title-large">
           <span className="brand-mark"><Icon name="brand" /></span>
-          Нормоконтроль
+          <span className="brand-text">Нормоконтроль</span>
         </Link>
         <nav className="tabs" aria-label="Тип работы">
           <NavLink to="/vkr" className="tab label-large">ВКР<md-ripple /></NavLink>
