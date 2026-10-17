@@ -1,6 +1,7 @@
 import {
   ArrowLeft, ArrowRight, BookOpen, Check, ChevronDown, CircleAlert, CircleCheck, CircleCheckBig, Download,
-  FileText, FileUp, GraduationCap, Info, Lightbulb, ListChecks, OctagonAlert, WandSparkles,
+  AlignJustify, FileText, FileUp, GraduationCap, IndentIncrease, Info, Lightbulb, ListChecks, OctagonAlert, Scan, Type,
+  WandSparkles,
 } from "lucide-react";
 
 // Custom elements в React 18 получают атрибуты как строки: disabled={false} стал бы "false" (= включено),
@@ -25,6 +26,10 @@ const ICONS = {
   fix: WandSparkles,
   check: ListChecks,
   tick: Check,
+  font: Type,
+  spacing: AlignJustify,
+  indent: IndentIncrease,
+  margins: Scan,
 };
 
 /** Иконка Lucide по короткому имени. Лишние props (например slot="icon" для кнопок M3) уходят на <svg>. */

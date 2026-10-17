@@ -114,6 +114,7 @@ def _make(key, **over):
 _make(
     "vkr",
     title="Выпускная квалификационная работа",
+    tagline="Бакалаврская, дипломная и магистерская работа — строгая проверка по ГОСТ.",
     description="Бакалаврская, дипломная, магистерская работа. Строгая проверка: "
                 "кегль основного текста ровно 14 пт, полуторный интервал.",
     font_size_pt=14.0, font_size_min_pt=14.0, font_size_max_pt=14.0,
@@ -122,6 +123,7 @@ _make(
 _make(
     "coursework",
     title="Курсовая работа",
+    tagline="Курсовые работы и рефераты — кегль 12–14 пт, остальное по ГОСТ.",
     description="Курсовые и рефераты. Допускается кегль 12–14 пт; "
                 "остальные требования — по ГОСТ 7.32-2017.",
     font_size_pt=14.0, font_size_min_pt=12.0, font_size_max_pt=14.0,
@@ -150,6 +152,15 @@ def describe_profile(p):
         "title": p["title"],
         "description": p["description"],
         "standard": p["standard"],
+        "tagline": p.get("tagline", p["description"]),
+        # ключевые нормы одной строкой — для «чипов» в шапке страницы
+        "highlights": [
+            {"icon": "font", "label": f"{p['font_name']} {size}"},
+            {"icon": "spacing", "label": "Интервал " + f"{p['line_spacing']:g}".replace(".", ",")},
+            {"icon": "indent", "label": "Отступ " + f"{p['first_line_indent_cm']:g}".replace(".", ",") + " см"},
+            {"icon": "margins", "label": "Поля " + " / ".join(
+                _fmt_range(*m[side]).replace(" см", "") for side in ("left", "right", "top", "bottom")) + " см"},
+        ],
         "norms": [
             {"name": "Поля", "value": f"левое {_fmt_range(*m['left'])}, правое {_fmt_range(*m['right'])}, "
                                         f"верхнее {_fmt_range(*m['top'])}, нижнее {_fmt_range(*m['bottom'])}"},

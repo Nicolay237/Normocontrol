@@ -45,13 +45,18 @@ export default function UploadForm({ onSubmit, serverError }) {
           <>
             <span className="title-medium dz-name">{file.name}</span>
             <span className="body-medium dz-hint">
-              {(file.size / 1024 / 1024).toFixed(2)} МБ · нажмите, чтобы выбрать другой файл
+              {(file.size / 1024 / 1024).toFixed(2).replace(".", ",")} МБ · нажмите, чтобы выбрать другой файл
             </span>
           </>
         ) : (
           <>
-            <span className="title-medium">Перетащите файл сюда или нажмите</span>
-            <span className="body-medium dz-hint">.docx или .pdf, до 20&nbsp;МБ</span>
+            <span className="title-medium">Перетащите файл сюда</span>
+            <span className="body-medium dz-hint">
+              или <span className="dz-link">выберите на компьютере</span>
+            </span>
+            <span className="dz-formats label-medium">
+              <span>DOCX</span><span>PDF</span><span>до 20&nbsp;МБ</span>
+            </span>
           </>
         )}
         <input type="file" accept=".docx,.pdf" className="visually-hidden" onChange={(e) => pick(e.target.files[0])} />
@@ -65,7 +70,7 @@ export default function UploadForm({ onSubmit, serverError }) {
 
       <md-filled-button type="submit" disabled={attr(!file)} class="submit">
         <Icon name="check" slot="icon" />
-        Проверить документ
+        {file ? "Проверить документ" : "Выберите файл, чтобы начать проверку"}
       </md-filled-button>
     </form>
   );

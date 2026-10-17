@@ -62,6 +62,35 @@ main { min-height: calc(100vh - 64px - 120px); }
 .loading { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 48px 0; text-align: center; color: var(--md-sys-color-on-surface-variant); }
 .loading .body-large { color: var(--md-sys-color-on-surface); margin-top: 4px; }
 
+/* ── шапка страницы проверки ── */
+.hero {
+  position: relative; overflow: hidden; margin-bottom: 16px;
+  padding: 32px var(--pad); border-radius: var(--shape-xl);
+  background:
+    radial-gradient(120% 140% at 100% 0%, var(--md-sys-color-primary-container) 0%, transparent 55%),
+    var(--md-sys-color-surface-container-low);
+  border: 1px solid var(--md-sys-color-outline-variant);
+}
+.hero > :not(.hero-art) { position: relative; }
+.hero-art {
+  position: absolute; right: 24px; top: 50%; transform: translateY(-50%) rotate(-12deg);
+  color: var(--md-sys-color-primary); opacity: .14; pointer-events: none;
+}
+.hero-art svg { display: block; }
+.hero-badge {
+  display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px 0 10px; border-radius: 16px;
+  background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container);
+}
+.hero-heading { margin: 16px 0 8px; font-weight: 400; max-width: 28ch; text-wrap: balance; }
+.hero-tagline { color: var(--md-sys-color-on-surface-variant); max-width: 52ch; }
+.highlights { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+.highlight {
+  display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border-radius: 8px;
+  background: var(--md-sys-color-surface); border: 1px solid var(--md-sys-color-outline-variant);
+  color: var(--md-sys-color-on-surface);
+}
+.highlight svg { color: var(--md-sys-color-primary); }
+
 /* ── карточки выбора ── */
 .card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-top: 32px; }
 .card { position: relative; border-radius: var(--shape-md); overflow: hidden; }
@@ -99,7 +128,14 @@ main { min-height: calc(100vh - 64px - 120px); }
 .dz-icon svg { width: 28px; height: 28px; }
 .dropzone .title-medium { color: var(--md-sys-color-on-surface); }
 .dz-name { overflow-wrap: anywhere; }
-.submit { margin-top: 24px; align-self: flex-start; }
+.dz-link { color: var(--md-sys-color-primary); font-weight: 500; text-decoration: underline; text-underline-offset: 3px; }
+.dz-formats { display: flex; gap: 6px; margin-top: 12px; }
+.dz-formats span {
+  padding: 2px 8px; border-radius: 6px; letter-spacing: .6px;
+  background: var(--md-sys-color-surface-container-high); color: var(--md-sys-color-on-surface-variant);
+}
+/* кнопка — во всю ширину зоны загрузки */
+.submit { margin-top: 16px; align-self: stretch; --md-filled-button-container-height: 52px; --md-filled-button-label-text-size: 16px; }
 
 /* ── список норм ── */
 .norms-card {
@@ -209,7 +245,9 @@ details[open] > summary .chevron { transform: rotate(180deg); }
   .tab { padding: 0 12px; }
   .gost { display: none; }
   .display-small { font-size: 28px; line-height: 36px; }
-  .submit { align-self: stretch; }
+  .hero { padding: 24px var(--pad); }
+  .hero-art { display: none; }  /* на узком экране иконка залезает на текст */
+  .hero-heading { margin-top: 12px; }
   :root { --pad: 16px; }
   .summary, .autofix { padding-block: 16px; }
   .summary { flex-direction: column; gap: 12px; }

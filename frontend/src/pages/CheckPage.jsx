@@ -61,9 +61,20 @@ export default function CheckPage({ profileKey }) {
 
   return (
     <section className="container page">
-      <p className="label-large eyebrow">{profile.standard}</p>
-      <h1 className="display-small hero-title">{profile.title}</h1>
-      <p className="body-large supporting">{profile.description}</p>
+      <header className="hero">
+        <span className="hero-art" aria-hidden="true"><Icon name={profileKey} size={176} /></span>
+        <span className="hero-badge label-large"><Icon name="ok" size={18} /> Проверка по {profile.standard}</span>
+        <h1 className="display-small hero-heading">{profile.title}</h1>
+        <p className="body-large hero-tagline">{profile.tagline}</p>
+        <ul className="highlights" aria-label="Ключевые нормы">
+          {profile.highlights.map((h) => (
+            <li key={h.icon} className="highlight label-large">
+              <Icon name={h.icon} size={18} />
+              {h.label}
+            </li>
+          ))}
+        </ul>
+      </header>
       <div className="banner banner-info body-medium">
         <Icon name="hint" />
         <span>
