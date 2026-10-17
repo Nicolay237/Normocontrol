@@ -3,6 +3,18 @@ import { fixFile, fixedUrl } from "../api.js";
 import { Icon, attr } from "../ui.jsx";
 import { IssueList } from "./ReportView.jsx";
 
+/** Карточка: иконка слева, весь контент — в одной колонке справа от неё. */
+function Card({ icon, done, children }) {
+  return (
+    <section className="autofix">
+      <div className="autofix-head">
+        <span className={`autofix-icon${done ? " done" : ""}`}><Icon name={icon} /></span>
+        <div className="autofix-body">{children}</div>
+      </div>
+    </section>
+  );
+}
+
 export default function AutoFix({ file, profileKey }) {
   const [state, setState] = useState({ phase: "idle", result: null, error: null });
   const isDocx = /\.docx$/i.test(file?.name ?? "");
@@ -19,31 +31,21 @@ export default function AutoFix({ file, profileKey }) {
 
   if (!isDocx)
     return (
-      <section className="autofix">
-        <div className="autofix-head">
-          <span className="autofix-icon"><Icon name="fix" /></span>
-          <div>
-            <h2 className="title-large">Автоисправление недоступно для PDF</h2>
-            <p className="body-medium">Загрузите исходный документ Word (.docx) — его можно исправить автоматически.</p>
-          </div>
-        </div>
-      </section>
+      <Card icon="fix">
+        <h2 className="title-large">Автоисправление недоступно для PDF</h2>
+        <p className="body-medium">Загрузите исходный документ Word (.docx) — его можно исправить автоматически.</p>
+      </Card>
     );
 
   if (state.phase === "done") {
     const r = state.result;
     const remaining = r.remaining.flatMap((c) => c.issues);
     return (
-      <section className="autofix">
-        <div className="autofix-head">
-          <span className="autofix-icon done"><Icon name="ok" /></span>
-          <div>
-            <h2 className="title-large">Исправлено: {r.total_applied}</h2>
-            <p className="body-medium">
-              Замечаний было {r.issues_before}, осталось {r.issues_after}. Исходный файл не изменён.
-            </p>
-          </div>
-        </div>
+      <Card icon="ok" done>
+        <h2 className="title-large">Исправлено: {r.total_applied}</h2>
+        <p className="body-medium">
+          Замечаний было {r.issues_before}, осталось {r.issues_after}. Исходный файл не изменён.
+        </p>
 
         <md-filled-button href={fixedUrl(r.download_id)} download="">
           <Icon name="download" slot="icon" />
@@ -81,23 +83,18 @@ export default function AutoFix({ file, profileKey }) {
             а содержание нужно обновить (Ссылки → Обновить таблицу).
           </span>
         </p>
-      </section>
+      </Card>
     );
   }
 
   const loading = state.phase === "loading";
   return (
-    <section className="autofix">
-      <div className="autofix-head">
-        <span className="autofix-icon"><Icon name="fix" /></span>
-        <div>
-          <h2 className="title-large">Исправить автоматически</h2>
-          <p className="body-medium">
-            Поля, шрифт, интервал, отступы, заголовки, подписи и нумерация страниц будут приведены к нормам.
-            Текст работы не меняется, то, что нельзя исправить, останется в списке.
-          </p>
-        </div>
-      </div>
+    <Card icon="fix">
+      <h2 className="title-large">Исправить автоматически</h2>
+      <p className="body-medium">
+        Поля, шрифт, интервал, отступы, заголовки, подписи и нумерация страниц будут приведены к нормам.
+        Текст работы не меняется, то, что нельзя исправить, останется в списке.
+      </p>
       {loading && <md-linear-progress indeterminate="" class="progress" />}
       <md-filled-button onClick={run} disabled={attr(loading)}>
         <Icon name="fix" slot="icon" />
@@ -106,6 +103,6 @@ export default function AutoFix({ file, profileKey }) {
       {state.error && (
         <div className="banner banner-error body-medium" role="alert"><Icon name="error" /><span>{state.error}</span></div>
       )}
-    </section>
+    </Card>
   );
 }

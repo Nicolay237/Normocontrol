@@ -121,11 +121,11 @@ body{margin:0;background:var(--surface);color:var(--on-surface);
 .overview a{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:4px 12px;border-radius:8px;
  border:1px solid var(--outline-variant);color:var(--on-surface);text-decoration:none;font-weight:500}
 .overview b{color:var(--error);font-weight:500}
-.notes{list-style:none;padding:0;margin:16px 0;color:var(--on-surface-variant);display:grid;gap:8px}
+.notes{list-style:none;padding:0;margin:16px 0 0;color:var(--on-surface-variant);display:grid;gap:8px}
 .notes li{display:flex;gap:8px}.notes svg{width:18px;height:18px;flex-shrink:0;margin-top:1px}
 .clean{color:var(--ok);font-size:16px;line-height:24px;margin-top:16px}
-details{margin-top:12px;border-radius:12px;background:var(--sc-low);overflow:hidden}
-summary{display:flex;align-items:center;gap:12px;padding:14px 16px 14px 24px;cursor:pointer;list-style:none;
+details{margin-top:12px;border-radius:12px;background:var(--sc-low);border:1px solid transparent;overflow:hidden}
+summary{display:flex;align-items:center;gap:12px;padding:14px 24px;cursor:pointer;list-style:none;
  font-weight:500;font-size:16px;line-height:24px}
 summary::-webkit-details-marker{display:none}
 summary .name{flex:1}
@@ -139,7 +139,7 @@ ul.issues li{padding:12px 24px;border-top:1px solid var(--outline-variant)}
  color:var(--on-surface-variant);overflow-wrap:anywhere}
 footer{margin-top:32px;padding-top:16px;border-top:1px solid var(--outline-variant);color:var(--on-surface-variant);
  font-size:12px;text-align:center}
-@media (max-width:560px){.summary{flex-direction:column}.tag{display:none}}
+@media (max-width:560px){.summary{flex-direction:column;padding:16px}summary{padding:14px 16px}ul.issues li{padding:12px 16px}.tag{display:none}}
 @media print{:root{color-scheme:light}
  body{background:#fff;color:#000}.wrap{max-width:none;padding:0}
  .summary,details{background:none;border:1px solid #ccc}

@@ -10,7 +10,7 @@ const CARDS = [
 export default function Home({ notFound }) {
   const { profiles } = useProfiles();
   return (
-    <section className="page">
+    <section className="container page">
       {notFound && <div className="banner banner-error body-medium" role="alert"><Icon name="error" /> Страница не найдена. Выберите тип работы:</div>}
       <h1 className="display-small hero-title">Проверьте оформление работы раньше, чем это сделает нормоконтролёр</h1>
       <p className="body-large supporting">

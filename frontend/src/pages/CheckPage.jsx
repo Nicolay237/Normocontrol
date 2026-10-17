@@ -33,18 +33,18 @@ export default function CheckPage({ profileKey }) {
 
   if (profilesError)
     return (
-      <section className="page">
+      <section className="container page">
         <div className="banner banner-error body-medium" role="alert"><Icon name="error" /> {profilesError}</div>
       </section>
     );
   if (!profile)
     return (
-      <section className="page loading"><md-circular-progress indeterminate="" /></section>
+      <section className="container page loading"><md-circular-progress indeterminate="" /></section>
     );
 
   if (state.phase === "done")
     return (
-      <section className="page">
+      <section className="container page">
         <ReportView key={state.report.report_id} report={state.report}>
           {config.autofix_enabled && !state.report.clean && (
             <AutoFix file={state.file} profileKey={profileKey} />
@@ -60,7 +60,7 @@ export default function CheckPage({ profileKey }) {
     );
 
   return (
-    <section className="page">
+    <section className="container page">
       <p className="label-large eyebrow">{profile.standard}</p>
       <h1 className="display-small hero-title">{profile.title}</h1>
       <p className="body-large supporting">{profile.description}</p>

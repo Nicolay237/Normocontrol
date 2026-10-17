@@ -1,7 +1,7 @@
 /* Компоновка и компоненты Material 3 (кнопки, прогресс — из @material/web, иконки — lucide-react) */
 
 * { box-sizing: border-box; }
-html { scroll-behavior: smooth; }
+html { scroll-behavior: smooth; scrollbar-gutter: stable; }  /* колонка не прыгает между страницами с прокруткой и без */
 body {
   margin: 0; background: var(--md-sys-color-surface); color: var(--md-sys-color-on-surface);
   font: 400 16px/24px var(--md-ref-typeface-plain);
@@ -23,12 +23,17 @@ md-filled-button, md-filled-tonal-button, md-outlined-button, md-text-button {
   --md-text-button-container-shape: 20px; --md-filled-tonal-button-container-shape: 20px;
 }
 
-/* ── top app bar ── */
-.app-bar {
-  display: flex; align-items: center; gap: 16px;
-  height: 64px; padding: 0 clamp(12px, 4vw, 40px);
-  background: var(--md-sys-color-surface-container); position: sticky; top: 0; z-index: 5;
+/* ── единая сетка: шапка, контент и футер выровнены по одной колонке ── */
+:root {
+  --content-max: 880px;
+  --gutter: clamp(16px, 4vw, 40px);
+  --pad: 24px;            /* внутренний горизонтальный отступ карточек и панелей */
 }
+.container { width: 100%; max-width: calc(var(--content-max) + 2 * var(--gutter)); margin: 0 auto; padding-inline: var(--gutter); }
+
+/* ── top app bar ── */
+.app-bar { background: var(--md-sys-color-surface-container); position: sticky; top: 0; z-index: 5; }
+.app-bar-inner { display: flex; align-items: center; gap: 16px; height: 64px; }
 .brand { display: flex; align-items: center; gap: 12px; color: var(--md-sys-color-on-surface); white-space: nowrap; }
 .brand-mark {
   display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%;
@@ -47,7 +52,7 @@ md-filled-button, md-filled-tonal-button, md-outlined-button, md-text-button {
 
 /* ── страницы ── */
 main { min-height: calc(100vh - 64px - 120px); }
-.page { max-width: 960px; margin: 0 auto; padding: clamp(24px, 5vw, 56px) clamp(16px, 4vw, 40px) 56px; }
+.page { padding-top: clamp(24px, 5vw, 56px); padding-bottom: 56px; }
 .hero-title { max-width: 24ch; margin-bottom: 16px; font-weight: 400; }
 .supporting { color: var(--md-sys-color-on-surface-variant); max-width: 62ch; margin-bottom: 24px; }
 .eyebrow { color: var(--md-sys-color-primary); margin-bottom: 8px; }
@@ -61,7 +66,7 @@ main { min-height: calc(100vh - 64px - 120px); }
 .card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-top: 32px; }
 .card { position: relative; border-radius: var(--shape-md); overflow: hidden; }
 .card-filled { background: var(--md-sys-color-surface-container-highest); }
-.card-link { display: flex; flex-direction: column; gap: 8px; padding: 24px; color: inherit; }
+.card-link { display: flex; flex-direction: column; gap: 8px; padding: var(--pad); color: inherit; }
 .card-link p { color: var(--md-sys-color-on-surface-variant); flex: 1; }
 .card-icon {
   display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; margin-bottom: 8px;
@@ -70,14 +75,14 @@ main { min-height: calc(100vh - 64px - 120px); }
 .card-action { display: inline-flex; align-items: center; gap: 8px; color: var(--md-sys-color-primary); margin-top: 8px; }
 
 /* ── баннеры ── */
-.banner { display: flex; gap: 12px; align-items: flex-start; padding: 12px 16px; border-radius: var(--shape-md); margin-bottom: 24px; }
+.banner { display: flex; gap: 12px; align-items: flex-start; padding: 12px var(--pad); border: 1px solid transparent; border-radius: var(--shape-md); margin-bottom: 24px; }
 .banner svg { width: 20px; height: 20px; margin-top: 0; }
 .banner-info { background: var(--md-sys-color-surface-container-high); color: var(--md-sys-color-on-surface); }
 .banner-info svg { color: var(--md-sys-color-primary); }
 .banner-error { background: var(--md-sys-color-error-container); color: var(--md-sys-color-on-error-container); margin: 16px 0 0; }
 
 /* ── загрузка файла ── */
-.upload { max-width: 640px; display: flex; flex-direction: column; }
+.upload { display: flex; flex-direction: column; }
 .dropzone {
   position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center;
   cursor: pointer; overflow: hidden; padding: 36px 24px; border-radius: var(--shape-lg);
@@ -99,7 +104,7 @@ main { min-height: calc(100vh - 64px - 120px); }
 /* ── список норм ── */
 .norms-card {
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 32px;
-  padding: 8px 24px; border-radius: var(--shape-md); border: 1px solid var(--md-sys-color-outline-variant);
+  padding: 8px var(--pad); border-radius: var(--shape-md); border: 1px solid var(--md-sys-color-outline-variant);
 }
 .norm-row { padding: 14px 0; border-bottom: 1px solid var(--md-sys-color-outline-variant); }
 .norm-row:nth-last-child(-n+2) { border-bottom: none; }
@@ -109,7 +114,7 @@ main { min-height: calc(100vh - 64px - 120px); }
 
 /* ── отчёт: сводка ── */
 .summary {
-  display: flex; align-items: flex-start; gap: 16px; padding: 20px 24px; border-radius: var(--shape-lg);
+  display: flex; align-items: flex-start; gap: 16px; padding: 20px var(--pad); border-radius: var(--shape-lg);
   background: var(--md-sys-color-surface-container-low); border: 1px solid var(--md-sys-color-outline-variant);
 }
 .summary-icon { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; flex-shrink: 0; }
@@ -134,8 +139,8 @@ main { min-height: calc(100vh - 64px - 120px); }
 .notes svg, .note svg { width: 18px; height: 18px; margin-top: 1px; }
 
 /* ── отчёт: разделы ── */
-.accordion { margin-top: 12px; border-radius: var(--shape-md); background: var(--md-sys-color-surface-container-low); overflow: hidden; scroll-margin-top: 80px; }
-.accordion summary { display: flex; align-items: center; gap: 12px; padding: 14px 16px 14px 24px; cursor: pointer; list-style: none; }
+.accordion { margin-top: 12px; border-radius: var(--shape-md); background: var(--md-sys-color-surface-container-low); border: 1px solid transparent; overflow: hidden; scroll-margin-top: 80px; }
+.accordion summary { display: flex; align-items: center; gap: 12px; padding: 14px var(--pad); cursor: pointer; list-style: none; }
 .accordion summary::-webkit-details-marker { display: none; }
 .accordion summary > span:first-child { flex: 1; }
 .accordion summary:hover { background: color-mix(in srgb, var(--md-sys-color-on-surface) 6%, transparent); }
@@ -143,18 +148,22 @@ details[open] > summary .chevron { transform: rotate(180deg); }
 .chevron { display: grid; transition: transform .2s; color: var(--md-sys-color-on-surface-variant); }
 .badge { min-width: 24px; padding: 2px 8px; border-radius: 12px; text-align: center; background: var(--md-sys-color-error); color: var(--md-sys-color-on-error); }
 
-.issue-list li { display: flex; flex-direction: column; gap: 2px; padding: 12px 24px; border-top: 1px solid var(--md-sys-color-outline-variant); }
+.issue-list li { display: flex; flex-direction: column; gap: 2px; padding: 12px var(--pad); border-top: 1px solid var(--md-sys-color-outline-variant); }
 .issue-loc { color: var(--md-sys-color-on-surface-variant); overflow-wrap: anywhere; }
-.more { margin: 4px 12px 8px; }
+.more { margin: 4px calc(var(--pad) - 12px) 8px; }
 
 /* ── автоисправление ── */
 .autofix {
-  margin-top: 16px; display: flex; flex-direction: column; align-items: flex-start; gap: 16px; padding: 20px 24px;
+  margin-top: 16px; display: flex; flex-direction: column; align-items: flex-start; gap: 16px; padding: 20px var(--pad);
   border-radius: var(--shape-lg); background: var(--md-sys-color-surface-container-low);
   border: 1px solid var(--md-sys-color-outline-variant);
 }
-.autofix-head { display: flex; gap: 16px; align-items: flex-start; }
-.autofix-head p { color: var(--md-sys-color-on-surface-variant); margin-top: 4px; max-width: 62ch; }
+.autofix-head { display: flex; gap: 16px; align-items: flex-start; width: 100%; }
+/* всё содержимое (кнопки, списки) — в одной колонке с текстом, справа от иконки */
+.autofix-body { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 16px; }
+.autofix-body > p { color: var(--md-sys-color-on-surface-variant); max-width: 62ch; }
+.autofix-body > h2 + p { margin-top: -12px; }  /* заголовок и описание — одна группа */
+.autofix-body .banner-error { margin: 0; width: 100%; }
 .autofix-icon {
   display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; flex-shrink: 0;
   background: var(--md-sys-color-primary-container); color: var(--md-sys-color-on-primary-container);
@@ -175,12 +184,12 @@ details[open] > summary .chevron { transform: rotate(180deg); }
 .applied-list li b { color: var(--md-sys-color-on-surface-variant); font-weight: 500; }
 
 .remaining { width: 100%; border-radius: var(--shape-md); border: 1px solid var(--md-sys-color-outline-variant); padding-top: 12px; overflow: hidden; }
-.remaining h3 { padding: 0 24px 8px; }
+.remaining h3 { padding: 0 var(--pad) 8px; }
 .autofix .note { color: var(--md-sys-color-on-surface-variant); }
 
 /* ── футер ── */
 .app-footer {
-  max-width: 960px; margin: 0 auto; padding: 24px clamp(16px, 4vw, 40px) 40px; text-align: center;
+  padding: 24px 0 40px; text-align: center;
   color: var(--md-sys-color-on-surface-variant); border-top: 1px solid var(--md-sys-color-outline-variant);
 }
 
@@ -193,7 +202,7 @@ details[open] > summary .chevron { transform: rotate(180deg); }
   .summary-download { margin-left: 64px; }
 }
 @media (max-width: 600px) {
-  .app-bar { gap: 8px; }
+  .app-bar-inner { gap: 8px; }
   .brand { gap: 8px; font-size: 18px; }
   .brand-mark { width: 36px; height: 36px; }
   .tabs { margin-left: auto; }
@@ -201,14 +210,13 @@ details[open] > summary .chevron { transform: rotate(180deg); }
   .gost { display: none; }
   .display-small { font-size: 28px; line-height: 36px; }
   .submit { align-self: stretch; }
-  .summary, .autofix { padding: 16px; }
+  :root { --pad: 16px; }
+  .summary, .autofix { padding-block: 16px; }
   .summary { flex-direction: column; gap: 12px; }
   .summary-text { flex-basis: auto; width: 100%; }
   .autofix-head { flex-direction: column; gap: 12px; }
   .summary-download { margin-left: 0; width: 100%; }
   .autofix md-filled-button { width: 100%; }
-  .issue-list li { padding: 12px 16px; }
-  .accordion summary { padding-left: 16px; }
 }
 @media (max-width: 360px) {
   .brand-text { display: none; }

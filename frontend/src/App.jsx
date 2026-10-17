@@ -8,6 +8,7 @@ export default function App() {
   return (
     <ProfilesProvider>
       <header className="app-bar">
+        <div className="container app-bar-inner">
         <Link to="/" className="brand title-large">
           <span className="brand-mark"><Icon name="brand" /></span>
           <span className="brand-text">Нормоконтроль</span>
@@ -17,6 +18,7 @@ export default function App() {
           <NavLink to="/coursework" className="tab label-large">Курсовая<md-ripple /></NavLink>
         </nav>
         <span className="gost label-medium">ГОСТ 7.32&#8209;2017</span>
+        </div>
       </header>
 
       <main>
@@ -28,9 +30,11 @@ export default function App() {
         </Routes>
       </main>
 
-      <footer className="app-footer body-medium">
-        Нормы приведены по ГОСТ 7.32&#8209;2017. Сервис даёт предварительную оценку —
-        окончательное решение остаётся за нормоконтролем вашей кафедры.
+      <footer className="container">
+        <p className="app-footer body-medium">
+          Нормы приведены по ГОСТ 7.32&#8209;2017. Сервис даёт предварительную оценку —
+          окончательное решение остаётся за нормоконтролем вашей кафедры.
+        </p>
       </footer>
     </ProfilesProvider>
   );
