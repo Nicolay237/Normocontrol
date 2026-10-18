@@ -91,4 +91,5 @@ export async function fixFile({ uploadId, file, profile, onProgress }) {
 }
 
 export const reportUrl = (id) => `/api/report/${id}`;
+export const annotatedUrl = (uploadId, profile) => `/api/annotated/${uploadId}?profile=${encodeURIComponent(profile)}`;
 export const fixedUrl = (id) => `/api/fixed/${id}`;

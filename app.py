@@ -18,6 +18,7 @@ from checker import (
     PROFILES, describe_profile, run_normocontrol_cached, build_html_report,
 )
 from checker.fixers import fix_docx
+from checker.annotate import annotate_docx
 import auth
 from auth import can_autofix, current_user, public_user
 
@@ -202,6 +203,30 @@ def api_fixed_download(rid):
     path, name = entry
     resp = send_file(path, mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
     return _attachment(resp, "fixed.docx", name)
+
+
+@app.route("/api/annotated/<upload_id>")
+def api_annotated_download(upload_id):
+    """Копия загруженной работы с подсветкой и примечаниями Word на местах замечаний."""
+    profile = request.args.get("profile", "vkr")
+    if profile not in PROFILES:
+        return jsonify(error="Неизвестный тип работы."), 400
+    entry = store.get(upload_id, "upload")
+    if not entry:
+        return jsonify(error="Файл не найден или устарел (хранится час). Проверьте работу заново."), 404
+    path, name = entry
+    try:
+        report = run_normocontrol_cached(path, profile)  # после проверки — из кеша
+        with tempfile.TemporaryDirectory() as tmp:
+            dst = os.path.join(tmp, "annotated.docx")
+            annotate_docx(path, dst, report)
+            with open(dst, "rb") as fh:
+                data = fh.read()
+    except Exception:
+        app.logger.exception("annotate failed")
+        return jsonify(error="Не удалось подготовить файл с отметками."), 500
+    resp = Response(data, mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    return _attachment(resp, "normocontrol_marked.docx", f"{os.path.splitext(name)[0]}_замечания.docx")
 
 
 @app.route("/api/report/<rid>")

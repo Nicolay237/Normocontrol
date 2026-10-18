@@ -113,7 +113,11 @@ class DocxChecker:
     def _loc(self, p, kind="абзац"):
         page, n = self.page_map.get(id(p._p), (None, None))
         base = f"Страница {page}, {kind} {n}" if page else kind.capitalize()
-        return f"{base} («{preview(p, text=self.text(p))}»)"
+        loc = f"{base} («{preview(p, text=self.text(p))}»)"
+        idx = self._block_idx.get(id(p._p))
+        if idx is not None:
+            self._anchors[loc] = ("p", idx)
+        return loc
 
     def _first_size(self, p, default=14.0):
         for r in self._runs(p):
@@ -216,6 +220,8 @@ class DocxChecker:
         items = self.classify()
         paragraphs = [it["obj"] for it in items if it["kind"] == "p"]
         self.page_map, self.exact = build_page_map(self.doc, paragraphs)
+        self._block_idx = {id(it["obj"]._element): it["i"] for it in items}
+        self._anchors = {}   # текст места → место в документе (для отметок в файле)
         return items
 
     def run(self):
@@ -234,6 +240,11 @@ class DocxChecker:
              for it in items if it["kind"] == "p" and it["role"] not in ("toc", "skip")],
             self.report,
         )
+        for issue in self.report.issues:
+            issue.anchor = self._anchors.get(issue.location)
+            m = re.match(r"Раздел документа №(\d+)", issue.location)
+            if issue.anchor is None and m:
+                issue.anchor = ("section", int(m.group(1)) - 1)
         if self.report.issues:  # заметка о точности номеров страниц нужна, только если есть замечания
             self.report.note(
                 "Номера страниц в замечаниях взяты из разметки Word и точны." if self.exact else
@@ -610,7 +621,9 @@ class DocxChecker:
                         for run in self._runs(p):
                             fname = res.font_name(run, p)
                             if (fname and fname != n["font_name"] and fname.lower() not in ALT_FONTS):
-                                self.report.add(f"Таблица №{ti}, строка {ri}, столбец {ci}", "Шрифт (таблица)",
+                                loc = f"Таблица №{ti}, строка {ri}, столбец {ci}"
+                                self._anchors[loc] = ("cell", it["i"], ri - 1, ci - 1)
+                                self.report.add(loc, "Шрифт (таблица)",
                                                 f"использован шрифт «{fname}», ожидается «{n['font_name']}»")
                                 break
 

@@ -12,6 +12,13 @@ class Issue:
     location: str
     category: str
     message: str
+    # Место в .docx для отметок в файле: ("p", номер блока) — абзац верхнего уровня,
+    # ("cell", номер блока, строка, столбец) — ячейка таблицы, None — замечание ко всему документу.
+    # Номер блока — порядковый номер в iter_blocks(), он одинаков при каждом открытии файла.
+    anchor: object = field(default=None, compare=False, repr=False)
+
+    def public(self):
+        return {"location": self.location, "category": self.category, "message": self.message}
 
 
 @dataclass
@@ -44,7 +51,7 @@ class Report:
 
     def to_dict(self, source_name=""):
         cats = [
-            {"name": name, "count": len(items), "issues": [asdict(i) for i in items]}
+            {"name": name, "count": len(items), "issues": [i.public() for i in items]}
             for name, items in self.by_category().items()
         ]
         return {

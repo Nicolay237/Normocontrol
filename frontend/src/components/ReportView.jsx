@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { reportUrl } from "../api.js";
+import { annotatedUrl, reportUrl } from "../api.js";
 import { Icon } from "../ui.jsx";
 
 const PAGE = 30;
@@ -87,10 +87,26 @@ export default function ReportView({ report, children }) {
             </ul>
           )}
         </div>
-        <md-outlined-button href={reportUrl(report.report_id)} download="" class="summary-download">
-          <Icon name="download" slot="icon" />
-          Скачать отчёт
-        </md-outlined-button>
+        <div className="summary-actions">
+          {report.upload_id && !clean ? (
+            <>
+              {/* .docx: сама работа с подсветкой и примечаниями Word на местах ошибок */}
+              <md-filled-tonal-button href={annotatedUrl(report.upload_id, report.profile.key)} download="">
+                <Icon name="file" slot="icon" />
+                Работа с отметками
+              </md-filled-tonal-button>
+              <md-text-button href={reportUrl(report.report_id)} download="">
+                <Icon name="download" slot="icon" />
+                Отчёт .html
+              </md-text-button>
+            </>
+          ) : (
+            <md-outlined-button href={reportUrl(report.report_id)} download="">
+              <Icon name="download" slot="icon" />
+              Скачать отчёт
+            </md-outlined-button>
+          )}
+        </div>
       </div>
 
       {notes.length > 0 && (
