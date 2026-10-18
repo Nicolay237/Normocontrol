@@ -54,8 +54,8 @@ def emu_to_cm(v):
     return None if v is None else round(v / 360000.0, 3)
 
 
-def preview(p, n=60):
-    t = p.text.strip()
+def preview(p, n=60, text=None):
+    t = (p.text if text is None else text).strip()
     return t[:n] + "..." if len(t) > n else (t or "(пустой абзац)")
 
 

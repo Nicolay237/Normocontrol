@@ -58,7 +58,7 @@ def test_good_document_untouched(tmp_path):
 
 def test_broken_document_gets_clean(tmp_path):
     _, dst, r = fix(broken_document(), tmp_path)
-    assert r.before.issues and r.total_applied > 0
+    assert r.before.issues and r.total_fixed == len(r.before.issues) - len(r.after.issues)
     rep = run_normocontrol(str(dst), "vkr")
     assert rep.is_clean(), "\n".join(f"[{i.category}] {i.location}: {i.message}" for i in rep.issues)
 
@@ -158,3 +158,25 @@ def test_field_caption_not_rewritten(tmp_path):
     cap.add_run("2. подпись")
     _, dst, _ = fix(doc, tmp_path)
     assert "SEQ" in Document(str(dst)).element.xml
+
+
+def test_counts_are_issues_not_operations(tmp_path):
+    # один абзац с чужим шрифтом в трёх run'ах — это одно замечание, хотя правок три
+    doc = md.good_document()
+    p = doc.add_paragraph()
+    for t in ("Первая часть, ", "вторая часть, ", "третья часть предложения."):
+        p.add_run(t).font.name = "Arial"
+    _, _, r = fix(doc, tmp_path)
+    font = next(c for c in r.by_category() if c["name"] == "Шрифт")
+    assert font == {"name": "Шрифт", "before": 1, "after": 0, "fixed": 1}
+    assert r.total_fixed == 1 and r.applied["Шрифт заменён на Times New Roman"] == 3
+
+
+def test_missing_page_numbers_in_section_fixed(tmp_path):
+    from docx.enum.section import WD_SECTION
+    doc = md.good_document()
+    sec = doc.add_section(WD_SECTION.NEW_PAGE)
+    sec.footer.is_linked_to_previous = False
+    md.body(doc)
+    _, _, r = fix(doc, tmp_path)
+    assert r.before.issues and r.after.is_clean()

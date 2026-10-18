@@ -69,12 +69,12 @@ def _toc_level(p):
     return int(m.group(1)) if m else None
 
 
-def _is_toc(p):
+def _is_toc(p, text=None):
     name = style_name(p).lower()
     if "toc" in name or "оглавлен" in name or "содержан" in name:
         # сам заголовок «СОДЕРЖАНИЕ» может иметь стиль «TOC Heading»
         return _toc_level(p) is not None
-    return bool(TOC_TAIL_RE.search(p.text))
+    return bool(TOC_TAIL_RE.search(p.text if text is None else text))
 
 
 def _heading_level(p):
@@ -91,16 +91,29 @@ class DocxChecker:
     def __init__(self, doc, report, profile):
         self.doc, self.report, self.n = doc, report, profile
         self.res = Resolver(doc)
+        # p.text / run.text в python-docx каждый раз выполняют xpath — на ВКР это тысячи
+        # вызовов и основная часть времени. Документ при проверке не меняется, кешируем.
+        self._text = {}
+        self._runs_cache = {}
 
     # ── вспомогательное ──────────────────────────────────────────────────
 
+    def text(self, p):
+        key = id(p._p)
+        if key not in self._text:
+            self._text[key] = p.text
+        return self._text[key]
+
     def _runs(self, p):
-        return [r for r in get_all_runs(p) if r.text.strip()]
+        key = id(p._p)
+        if key not in self._runs_cache:
+            self._runs_cache[key] = [r for r in get_all_runs(p) if r.text.strip()]
+        return self._runs_cache[key]
 
     def _loc(self, p, kind="абзац"):
         page, n = self.page_map.get(id(p._p), (None, None))
         base = f"Страница {page}, {kind} {n}" if page else kind.capitalize()
-        return f"{base} («{preview(p)}»)"
+        return f"{base} («{preview(p, text=self.text(p))}»)"
 
     def _first_size(self, p, default=14.0):
         for r in self._runs(p):
@@ -122,7 +135,7 @@ class DocxChecker:
             j = idx + step
             while 0 <= j < len(items):
                 it = items[j]
-                if it["kind"] == "tbl" or items[j]["obj"].text.strip() or has_image(items[j]["obj"]):
+                if it["kind"] == "tbl" or self.text(items[j]["obj"]).strip() or has_image(items[j]["obj"]):
                     return it
                 j += step
             return None
@@ -132,7 +145,7 @@ class DocxChecker:
                 it["role"] = "table"
                 continue
             p = it["obj"]
-            text = p.text.strip()
+            text = self.text(p).strip()
             sname = style_name(p).strip().lower()
 
             if is_formula(p):  # текст формулы python-docx не отдаёт — абзац выглядит пустым
@@ -144,7 +157,7 @@ class DocxChecker:
             if sname in TITLE_STYLES:
                 it["role"] = "skip"
                 continue
-            if _is_toc(p):
+            if _is_toc(p, self.text(p)):
                 it["role"] = "toc"
                 continue
 
@@ -217,7 +230,7 @@ class DocxChecker:
         self.check_structure(items)
         self.check_new_page(items)
         check_typography(
-            [(self._loc(it["obj"]), it["obj"].text, it["role"], has_page_break(it["obj"]))
+            [(self._loc(it["obj"]), self.text(it["obj"]), it["role"], has_page_break(it["obj"]))
              for it in items if it["kind"] == "p" and it["role"] not in ("toc", "skip")],
             self.report,
         )
@@ -262,35 +275,48 @@ class DocxChecker:
                     self.report.add(loc, "Поля страницы",
                                     f"{names[side]} поле {_fmt(actual)} см, ожидается {want}")
 
+    @staticmethod
+    def _page_paragraphs(part):
+        """Абзацы колонтитула с полем PAGE (обходим весь XML: Word кладёт номер в <w:sdt>)."""
+        return [p_el for p_el in part._element.iter(qn('w:p'))
+                if "PAGE" in p_el.xml and ("instrText" in p_el.xml or "fldSimple" in p_el.xml)]
+
     def check_page_numbers(self):
         if not self.n["check_page_numbers"]:
             return
-        found, bad_align = False, None
+        bad_align = None
+        footer_has, header_has = [], []
+        prev_f = prev_h = False
         for s in self.doc.sections:
-            for part, is_footer in ((s.footer, True), (s.header, False)):
-                if part is None or part.is_linked_to_previous:
-                    continue
-                # обходим весь XML колонтитула: Word кладёт номер в <w:sdt>, которого нет в part.paragraphs
-                for p_el in part._element.iter(qn('w:p')):
-                    xml = p_el.xml
-                    if "PAGE" in xml and ("instrText" in xml or "fldSimple" in xml):
-                        found = True
-                        if is_footer:
-                            p = Paragraph(p_el, part)
-                            has_tab = "<w:tab/>" in xml
-                            if self.res.alignment(p) in ("left", "right", "justify") and not has_tab:
-                                bad_align = self.res.alignment(p)
-                        else:
-                            bad_align = bad_align or "header"
-        if not found:
+            # связанный с предыдущим колонтитул наследует его содержимое (и номер)
+            f_has = prev_f if s.footer.is_linked_to_previous else bool(self._page_paragraphs(s.footer))
+            h_has = prev_h if s.header.is_linked_to_previous else bool(self._page_paragraphs(s.header))
+            footer_has.append(f_has)
+            header_has.append(h_has)
+            prev_f, prev_h = f_has, h_has
+            if not s.footer.is_linked_to_previous:
+                for p_el in self._page_paragraphs(s.footer):
+                    al = self.res.alignment(Paragraph(p_el, s.footer))
+                    if al in ("left", "right", "justify") and "<w:tab/>" not in p_el.xml:
+                        bad_align = al
+
+        if not any(footer_has) and not any(header_has):
             self.report.add("Документ", "Нумерация страниц",
                             "номера страниц не найдены: нужна нумерация арабскими цифрами "
                             "внизу страницы по центру (Вставка → Номер страницы)")
-        elif bad_align == "header":
+            return
+        if not any(footer_has):
             self.report.add("Документ", "Нумерация страниц",
                             "номер страницы стоит в верхнем колонтитуле, по ГОСТ 7.32-2017 (п. 6.3.1) — "
                             "внизу страницы по центру")
-        elif bad_align:
+            return
+        for i, (f_has, h_has) in enumerate(zip(footer_has, header_has), start=1):
+            if not f_has and not h_has:
+                orient = " (альбомные листы)" if self.doc.sections[i - 1].page_width > self.doc.sections[i - 1].page_height else ""
+                self.report.add(f"Раздел документа №{i}{orient}", "Нумерация страниц",
+                                "на страницах этого раздела нет номеров — нумерация должна быть сквозной "
+                                "по всей работе (п. 6.3.1)")
+        if bad_align:
             ru = {"left": "слева", "right": "справа", "justify": "по ширине"}[bad_align]
             self.report.add("Документ", "Нумерация страниц",
                             f"номер страницы выровнен {ru}, ожидается по центру нижней части страницы")
@@ -360,14 +386,14 @@ class DocxChecker:
                 if role not in ("empty", "image"):
                     prev_formula = False
                 continue
-            text = p.text.strip()
+            text = self.text(p).strip()
             loc = self._loc(p)
             caption = role in ("figure_caption", "table_caption")
             self._check_runs(p, loc, False, size_floor_only=caption)
             self._check_spacing(p, loc, caption=caption)
 
             if role == "list":
-                if BULLET_MARKERS.match(p.text):
+                if BULLET_MARKERS.match(self.text(p)):
                     self.report.add(loc, "Перечисления",
                                     "маркер перечисления — не дефис; по ГОСТ 7.32-2017 (п. 6.4.5) "
                                     "перед элементом ставится дефис (тире)")
@@ -414,7 +440,7 @@ class DocxChecker:
             if it["role"] not in ("heading", "structural"):
                 continue
             p = it["obj"]
-            text = p.text.strip()
+            text = self.text(p).strip()
             loc = self._loc(p, "заголовок в абзаце")
             runs = self._runs(p)
             structural = it["role"] == "structural"
@@ -537,7 +563,7 @@ class DocxChecker:
                 if it["role"] != role:
                     continue
                 p = it["obj"]
-                text = p.text.strip()
+                text = self.text(p).strip()
                 m = rx.match(text)
                 if not m:
                     continue
@@ -594,8 +620,8 @@ class DocxChecker:
         present = set()
         for it in items:
             if it["role"] in ("structural", "heading") and it["kind"] == "p":
-                present.add(_norm_caps(it["obj"].text))
-        total_text = sum(len(it["obj"].text) for it in items if it["kind"] == "p")
+                present.add(_norm_caps(self.text(it["obj"])))
+        total_text = sum(len(self.text(it["obj"])) for it in items if it["kind"] == "p")
         if total_text < 1500:
             return  # слишком короткий фрагмент, обязательные разделы не ожидаются
         for title, variants in self.n["required_sections"]:

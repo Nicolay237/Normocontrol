@@ -37,20 +37,40 @@ TNR = "Times New Roman"
 
 @dataclass
 class FixResult:
-    applied: dict = field(default_factory=dict)   # {«что исправлено»: сколько раз}
+    """
+    Итог исправления. Пользователю показываются ЗАМЕЧАНИЯ (как в отчёте проверки),
+    а не отдельные правки XML: одно замечание может потребовать нескольких правок
+    (шрифт в каждом run'е абзаца), поэтому число правок с числом замечаний не совпадает.
+    """
+    applied: dict = field(default_factory=dict)   # {«что сделано»: сколько правок} — для журнала
     before: Report = None
     after: Report = None
 
+    def by_category(self):
+        """[{name, before, after, fixed}] в порядке категорий исходного отчёта."""
+        b = {k: len(v) for k, v in self.before.by_category().items()}
+        a = {k: len(v) for k, v in self.after.by_category().items()}
+        rows = [{"name": k, "before": n, "after": a.get(k, 0), "fixed": max(0, n - a.get(k, 0))} for k, n in b.items()]
+        rows += [{"name": k, "before": 0, "after": n, "fixed": 0} for k, n in a.items() if k not in b]
+        return rows
+
     @property
-    def total_applied(self):
-        return sum(self.applied.values())
+    def total_fixed(self):
+        return sum(r["fixed"] for r in self.by_category())
+
+    @property
+    def total_new(self):
+        """Замечания, которых не было до исправления (по категориям)."""
+        return sum(max(0, r["after"] - r["before"]) for r in self.by_category())
 
     def to_dict(self):
         return {
-            "applied": [{"name": k, "count": v} for k, v in self.applied.items()],
-            "total_applied": self.total_applied,
             "issues_before": len(self.before.issues),
             "issues_after": len(self.after.issues),
+            "total_fixed": self.total_fixed,
+            "total_new": self.total_new,
+            "categories": self.by_category(),
+            "operations": [{"name": k, "count": v} for k, v in self.applied.items()],
             "remaining": self.after.to_dict()["categories"],
             "notes": self.after.notes,
         }
@@ -470,13 +490,17 @@ class _Fixer:
                             self.done("Шрифт заменён на " + n["font_name"])
 
 
-def fix_docx(src_path, dst_path, profile):
+def fix_docx(src_path, dst_path, profile, before=None):
     """
     Исправляет src_path → dst_path по профилю норм. Возвращает FixResult
     (что исправлено + замечания до и после).
+
+    before — уже готовый отчёт проверки исходного файла (например, из кеша
+    после /api/check): тогда повторная проверка исходника не нужна.
     """
-    before = Report(profile_key=profile["key"], profile_title=profile["title"])
-    DocxChecker(Document(src_path), before, profile).run()
+    if before is None:
+        before = Report(profile_key=profile["key"], profile_title=profile["title"])
+        DocxChecker(Document(src_path), before, profile).run()
 
     doc = Document(src_path)
     fx = _Fixer(doc, profile)

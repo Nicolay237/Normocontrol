@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { fixFile, fixedUrl } from "../api.js";
 import { Icon, attr } from "../ui.jsx";
-import { IssueList } from "./ReportView.jsx";
+import { IssueList, plural } from "./ReportView.jsx";
+import Progress from "./Progress.jsx";
 
 /** Карточка: иконка слева, весь контент — в одной колонке справа от неё. */
 function Card({ icon, done, children }) {
@@ -15,17 +16,21 @@ function Card({ icon, done, children }) {
   );
 }
 
-export default function AutoFix({ file, profileKey }) {
-  const [state, setState] = useState({ phase: "idle", result: null, error: null });
+export default function AutoFix({ file, uploadId, profileKey }) {
+  const [state, setState] = useState({ phase: "idle", result: null, error: null, upload: null });
   const isDocx = /\.docx$/i.test(file?.name ?? "");
 
   async function run() {
-    setState({ phase: "loading", result: null, error: null });
+    setState({ phase: "loading", result: null, error: null, upload: null });
     try {
-      const result = await fixFile(file, profileKey);
-      setState({ phase: "done", result, error: null });
+      const result = await fixFile({
+        uploadId, file, profile: profileKey,
+        // прогресс появится, только если файл придётся отправить заново
+        onProgress: (upload) => setState((s) => ({ ...s, upload })),
+      });
+      setState({ phase: "done", result, error: null, upload: null });
     } catch (e) {
-      setState({ phase: "idle", result: null, error: e.message });
+      setState({ phase: "idle", result: null, error: e.message, upload: null });
     }
   }
 
@@ -40,11 +45,16 @@ export default function AutoFix({ file, profileKey }) {
   if (state.phase === "done") {
     const r = state.result;
     const remaining = r.remaining.flatMap((c) => c.issues);
+    const fixedCats = r.categories.filter((c) => c.fixed > 0);
     return (
       <Card icon="ok" done>
-        <h2 className="title-large">Исправлено: {r.total_applied}</h2>
+        <h2 className="title-large">
+          Исправлено {r.total_fixed} {plural(r.total_fixed)} из {r.issues_before}
+        </h2>
         <p className="body-medium">
-          Замечаний было {r.issues_before}, осталось {r.issues_after}. Исходный файл не изменён.
+          {r.issues_after === 0
+            ? "Замечаний не осталось. Исходный файл не изменён."
+            : `Осталось ${r.issues_after} — их нужно поправить вручную. Исходный файл не изменён.`}
         </p>
 
         <md-filled-button href={fixedUrl(r.download_id)} download="">
@@ -52,17 +62,17 @@ export default function AutoFix({ file, profileKey }) {
           Скачать исправленный файл
         </md-filled-button>
 
-        {r.applied.length > 0 && (
+        {fixedCats.length > 0 && (
           <details className="fix-details">
             <summary className="label-large">
-              Что изменено <span className="chevron"><Icon name="chevron" size={20} /></span>
+              Что исправлено <span className="chevron"><Icon name="chevron" size={20} /></span>
             </summary>
             <ul className="applied-list">
-              {r.applied.map((a) => (
-                <li key={a.name} className="body-medium">
+              {fixedCats.map((c) => (
+                <li key={c.name} className="body-medium">
                   <Icon name="tick" size={18} />
-                  <span>{a.name}</span>
-                  <b className="label-medium">×{a.count}</b>
+                  <span>{c.name}</span>
+                  <b className="label-medium">{c.fixed === c.before ? `все ${c.fixed}` : `${c.fixed} из ${c.before}`}</b>
                 </li>
               ))}
             </ul>
@@ -95,11 +105,14 @@ export default function AutoFix({ file, profileKey }) {
         Поля, шрифт, интервал, отступы, заголовки, подписи и нумерация страниц будут приведены к нормам.
         Текст работы не меняется, то, что нельзя исправить, останется в списке.
       </p>
-      {loading && <md-linear-progress indeterminate="" class="progress" />}
-      <md-filled-button onClick={run} disabled={attr(loading)}>
-        <Icon name="fix" slot="icon" />
-        {loading ? "Исправляем… обычно до полуминуты" : "Исправить и скачать"}
-      </md-filled-button>
+      {loading ? (
+        <Progress upload={state.upload} uploadingText="Отправляем файл" workingText="Исправляем оформление…" />
+      ) : (
+        <md-filled-button onClick={run} disabled={attr(loading)}>
+          <Icon name="fix" slot="icon" />
+          Исправить и скачать
+        </md-filled-button>
+      )}
       {state.error && (
         <div className="banner banner-error body-medium" role="alert"><Icon name="error" /><span>{state.error}</span></div>
       )}

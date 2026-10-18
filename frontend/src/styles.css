@@ -59,6 +59,12 @@ main { min-height: calc(100vh - 64px - 120px); }
 .section-title { margin: 40px 0 16px; }
 .reset { display: flex; justify-content: center; margin-top: 32px; }
 
+.progress-block { display: flex; flex-direction: column; gap: 8px; padding: 24px 0; width: 100%; }
+.progress-block .progress { width: 100%; }
+.progress-title { color: var(--md-sys-color-on-surface); font-variant-numeric: tabular-nums; }
+.progress-hint { color: var(--md-sys-color-on-surface-variant); }
+.autofix .progress-block { padding: 0; }
+
 .loading { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 48px 0; text-align: center; color: var(--md-sys-color-on-surface-variant); }
 .loading .body-large { color: var(--md-sys-color-on-surface); margin-top: 4px; }
 

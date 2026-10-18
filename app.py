@@ -3,13 +3,16 @@
 """Flask-сервер: JSON API проверки + раздача собранного React-фронтенда."""
 
 import os
+import json
+import gzip
 import time
 import uuid
+import shutil
 import tempfile
 import threading
 from urllib.parse import quote
 
-from flask import Flask, request, jsonify, Response, send_from_directory
+from flask import Flask, request, jsonify, Response, send_from_directory, send_file
 
 from checker import (
     PROFILES, describe_profile, run_normocontrol_cached, build_html_report,
@@ -34,23 +37,61 @@ def can_autofix():
     return EDITION == "university"
 
 
-# HTML-отчёты и исправленные файлы для скачивания: короткоживущее хранилище в памяти
-_REPORTS = {}
-_REPORTS_LOCK = threading.Lock()
-_REPORT_TTL = 3600
-_REPORT_MAX = 200
+# ── короткоживущее хранилище файлов на диске ──────────────────────────────
+# Загруженные .docx (чтобы автоисправление не заставляло телефон отправлять файл
+# второй раз), HTML-отчёты и исправленные файлы. На диске, а не в памяти: на
+# тарифах с 512 МБ RAM сотня исправленных работ по 2–5 МБ в памяти не поместится.
+
+class FileStore:
+    TTL = 3600          # секунд
+    MAX_ITEMS = 300
+
+    def __init__(self, root):
+        self.root = root
+        shutil.rmtree(root, ignore_errors=True)   # файлы прошлого запуска уже никому не нужны
+        os.makedirs(root, exist_ok=True)
+        self.meta = {}                           # id → (kind, name, created, path)
+        self.lock = threading.Lock()
+
+    def _cleanup(self):
+        now = time.time()
+        old = {k for k, m in self.meta.items() if now - m[2] > self.TTL}
+        rest = sorted((k for k in self.meta if k not in old), key=lambda k: self.meta[k][2])
+        while len(rest) >= self.MAX_ITEMS:
+            old.add(rest.pop(0))
+        for k in old:
+            m = self.meta.pop(k, None)
+            try:
+                os.remove(m[3])
+            except (OSError, TypeError):
+                pass
+
+    def put(self, kind, name, data=None, src_path=None):
+        sid = uuid.uuid4().hex
+        # расширение сохраняем: проверка определяет формат по нему
+        path = os.path.join(self.root, sid + os.path.splitext(name)[1].lower())
+        if src_path:
+            shutil.copyfile(src_path, path)
+        else:
+            with open(path, "wb") as fh:
+                fh.write(data.encode("utf-8") if isinstance(data, str) else data)
+        with self.lock:
+            self._cleanup()
+            self.meta[sid] = (kind, name, time.time(), path)
+        return sid
+
+    def get(self, sid, kind):
+        """(путь, исходное имя) или None, если нет / устарел / другого типа."""
+        if not sid or not sid.isalnum():
+            return None
+        with self.lock:
+            m = self.meta.get(sid)
+        if not m or m[0] != kind or time.time() - m[2] > self.TTL or not os.path.exists(m[3]):
+            return None
+        return m[3], m[1]
 
 
-def _store_report(html, name):
-    now = time.time()
-    rid = uuid.uuid4().hex
-    with _REPORTS_LOCK:
-        for k in [k for k, v in _REPORTS.items() if now - v[2] > _REPORT_TTL]:
-            _REPORTS.pop(k, None)
-        while len(_REPORTS) >= _REPORT_MAX:
-            _REPORTS.pop(min(_REPORTS, key=lambda k: _REPORTS[k][2]), None)
-        _REPORTS[rid] = (html, name, now)
-    return rid
+store = FileStore(os.path.join(tempfile.gettempdir(), "normocontrol_store"))
 
 
 @app.route("/health")
@@ -93,9 +134,12 @@ def api_check():
             if app.debug:
                 msg += f" ({e})"
             return jsonify(error=msg), 422
+        # .docx храним час: автоисправление возьмёт его отсюда, без повторной загрузки с телефона
+        upload_id = store.put("upload", f.filename, src_path=path) if ext == ".docx" else None
 
     data = report.to_dict(f.filename)
-    data["report_id"] = _store_report(build_html_report(report, f.filename), f.filename)
+    data["report_id"] = store.put("report", f.filename, data=build_html_report(report, f.filename))
+    data["upload_id"] = upload_id
     return jsonify(data)
 
 
@@ -103,62 +147,66 @@ def api_check():
 def api_fix():
     if not can_autofix():
         return jsonify(error="Автоисправление в этой версии недоступно."), 403
-    f = request.files.get("file")
-    if not f or not f.filename:
-        return jsonify(error="Файл не выбран."), 400
     profile = request.form.get("profile", "vkr")
     if profile not in PROFILES:
         return jsonify(error="Неизвестный тип работы."), 400
-    if os.path.splitext(f.filename)[1].lower() != ".docx":
+
+    # Обычно файл уже лежит на сервере после проверки (upload_id). Если его нет
+    # (прошёл час или сервер перезапускался) — клиент присылает файл заново.
+    stored = store.get(request.form.get("upload_id", ""), "upload")
+    f = request.files.get("file")
+    if not stored and not (f and f.filename):
+        return jsonify(error="Файл не найден на сервере, загрузите его ещё раз.", code="upload_expired"), 410
+    filename = stored[1] if stored else f.filename
+    if os.path.splitext(filename)[1].lower() != ".docx":
         return jsonify(error="Автоисправление работает только с файлами .docx."), 400
 
     with tempfile.TemporaryDirectory() as tmp:
-        src, dst = os.path.join(tmp, "upload.docx"), os.path.join(tmp, "fixed.docx")
-        f.save(src)
+        dst = os.path.join(tmp, "fixed.docx")
+        if stored:
+            src = stored[0]
+        else:
+            src = os.path.join(tmp, "upload.docx")
+            f.save(src)
         try:
-            result = fix_docx(src, dst, PROFILES[profile])
+            before = run_normocontrol_cached(src, profile)  # после проверки уже в кеше
+            result = fix_docx(src, dst, PROFILES[profile], before=before)
         except Exception:
             app.logger.exception("fix failed")
             return jsonify(error="Не удалось исправить файл. Убедитесь, что он не повреждён и не защищён паролем."), 422
-        with open(dst, "rb") as fh:
-            data = fh.read()
+        base = os.path.splitext(filename)[0]
+        download_id = store.put("fixed", f"{base}_исправлено.docx", src_path=dst)
 
-    base = os.path.splitext(f.filename)[0]
     payload = result.to_dict()
-    payload["file"] = f.filename
-    payload["download_id"] = _store_report(data, f"{base}_исправлено.docx")
+    payload["file"] = filename
+    payload["download_id"] = download_id
     return jsonify(payload)
+
+
+def _attachment(resp, ascii_name, name):
+    resp.headers["Content-Disposition"] = f"attachment; filename={ascii_name}; filename*=UTF-8''{quote(name)}"
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 
 @app.route("/api/fixed/<rid>")
 def api_fixed_download(rid):
-    with _REPORTS_LOCK:
-        entry = _REPORTS.get(rid)
-    if not entry or not isinstance(entry[0], bytes):
+    entry = store.get(rid, "fixed")
+    if not entry:
         return jsonify(error="Файл не найден или устарел. Запустите исправление заново."), 404
-    data, name, _ = entry
-    resp = Response(data, mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-    resp.headers["Content-Disposition"] = (
-        f"attachment; filename=fixed.docx; filename*=UTF-8''{quote(name)}"
-    )
-    return resp
+    path, name = entry
+    resp = send_file(path, mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    return _attachment(resp, "fixed.docx", name)
 
 
 @app.route("/api/report/<rid>")
 def api_report_download(rid):
-    with _REPORTS_LOCK:
-        entry = _REPORTS.get(rid)
+    entry = store.get(rid, "report")
     if not entry:
         return jsonify(error="Отчёт не найден или устарел. Проверьте файл заново."), 404
-    html, name, _ = entry
-    if not isinstance(html, str):
-        return jsonify(error="Отчёт не найден."), 404
-    base = os.path.splitext(name)[0]
-    resp = Response(html, mimetype="text/html")
-    resp.headers["Content-Disposition"] = (
-        f"attachment; filename=normocontrol_report.html; filename*=UTF-8''{quote(base)}_report.html"
-    )
-    return resp
+    path, name = entry
+    resp = send_file(path, mimetype="text/html")
+    return _attachment(resp, "normocontrol_report.html", f"{os.path.splitext(name)[0]}_report.html")
 
 
 @app.errorhandler(413)
@@ -169,6 +217,45 @@ def too_large(e):
 @app.errorhandler(500)
 def server_error(e):
     return jsonify(error="Внутренняя ошибка сервера."), 500
+
+
+# ── сжатие и кеширование (заметно ускоряет первую загрузку на телефоне) ──
+
+_COMPRESSIBLE = ("text/", "application/javascript", "application/json", "image/svg+xml")
+_GZ_CACHE = {}   # путь статики → (исходный размер, сжатые байты)
+
+
+@app.after_request
+def compress_and_cache(resp):
+    path = request.path
+    if path.startswith("/assets/"):
+        # у файлов Vite хеш в имени — можно кешировать навсегда
+        resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    elif resp.mimetype == "text/html" and not path.startswith("/api/"):
+        resp.headers["Cache-Control"] = "no-cache"   # index.html всегда свежий, иначе не увидят новый деплой
+
+    if ("gzip" not in request.headers.get("Accept-Encoding", "")
+            or resp.status_code != 200 or "Content-Encoding" in resp.headers
+            or not (resp.mimetype or "").startswith(_COMPRESSIBLE)
+            or resp.headers.get("Content-Disposition", "").startswith("attachment")):
+        return resp
+    resp.direct_passthrough = False
+    data = resp.get_data()
+    if len(data) < 1024:
+        return resp
+    static = path.startswith("/assets/")
+    cached = _GZ_CACHE.get(path) if static else None
+    if cached and cached[0] == len(data):
+        gz = cached[1]
+    else:
+        gz = gzip.compress(data, compresslevel=6)
+        if static:
+            _GZ_CACHE[path] = (len(data), gz)
+    resp.set_data(gz)
+    resp.headers["Content-Encoding"] = "gzip"
+    resp.headers["Vary"] = "Accept-Encoding"
+    resp.headers["Content-Length"] = str(len(gz))
+    return resp
 
 
 # ── React SPA ─────────────────────────────────────────────────────────────
@@ -183,9 +270,32 @@ def spa(path):
             "Фронтенд не собран. Выполните: cd frontend && npm install && npm run build "
             "(или запустите npm run dev для разработки).", status=503, mimetype="text/plain; charset=utf-8")
     full = os.path.join(DIST_DIR, path)
-    if path and os.path.isfile(full):
+    if path and os.path.isfile(full) and path != "index.html":
         return send_from_directory(DIST_DIR, path)
-    return send_from_directory(DIST_DIR, "index.html")  # клиентский роутинг (/vkr, /coursework)
+    return Response(_index_html(), mimetype="text/html")  # клиентский роутинг (/vkr, /coursework)
+
+
+_INDEX = {}   # mtime index.html → готовый HTML с данными
+
+
+def _index_html():
+    """
+    index.html со встроенными профилями и конфигом (window.__BOOT__): страница
+    рисуется сразу, без двух дополнительных запросов к API — на мобильном
+    интернете это заметно ускоряет первый показ.
+    """
+    path = os.path.join(DIST_DIR, "index.html")
+    mtime = os.path.getmtime(path)
+    if _INDEX.get("mtime") != mtime:
+        boot = {"profiles": [describe_profile(p) for p in PROFILES.values()],
+                "config": {"edition": EDITION, "autofix_enabled": can_autofix()}}
+        # "</" экранируем, чтобы строка в JSON не закрыла тег <script>
+        payload = json.dumps(boot, ensure_ascii=False).replace("</", "<\\/")
+        with open(path, encoding="utf-8") as fh:
+            html = fh.read()
+        html = html.replace("</head>", f"<script>window.__BOOT__={payload}</script>\n</head>", 1)
+        _INDEX.update(mtime=mtime, html=html)
+    return _INDEX["html"]
 
 
 if __name__ == "__main__":

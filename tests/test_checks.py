@@ -385,3 +385,24 @@ def test_html_report_is_self_contained_new_design(tmp_path):
 
 def test_page_number_note_only_when_issues(tmp_path):
     assert not any("Номера страниц" in n for n in check(md.good_document(), tmp_path).notes)
+
+
+def test_section_without_page_numbers_flagged(tmp_path):
+    from docx.enum.section import WD_SECTION, WD_ORIENT
+    doc = md.good_document()
+    sec = doc.add_section(WD_SECTION.NEW_PAGE)
+    sec.orientation = WD_ORIENT.LANDSCAPE
+    sec.page_width, sec.page_height = Cm(29.7), Cm(21.0)
+    sec.footer.is_linked_to_previous = False   # пустой собственный колонтитул — номеров нет
+    md.body(doc)
+    r = check(doc, tmp_path)
+    issues = [i for i in r.issues if i.category == "Нумерация страниц"]
+    assert len(issues) == 1 and "Раздел документа №2" in issues[0].location
+
+
+def test_linked_footer_inherits_page_numbers(tmp_path):
+    from docx.enum.section import WD_SECTION
+    doc = md.good_document()
+    doc.add_section(WD_SECTION.NEW_PAGE)   # колонтитул связан с предыдущим — номер наследуется
+    md.body(doc)
+    assert "Нумерация страниц" not in cats(check(doc, tmp_path))

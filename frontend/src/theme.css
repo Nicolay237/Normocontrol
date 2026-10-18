@@ -4,8 +4,10 @@
 :root {
   color-scheme: light;
 
-  --md-ref-typeface-brand: "Roboto Flex", "Roboto", system-ui, sans-serif;
-  --md-ref-typeface-plain: "Roboto", system-ui, sans-serif;
+  /* Системные шрифты: на Android это и есть Roboto, на iOS/macOS — San Francisco, на Windows — Segoe UI.
+     Без внешних веб-шрифтов страница рисуется сразу, без ожидания загрузки с Google Fonts. */
+  --md-ref-typeface-brand: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --md-ref-typeface-plain: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 
   --md-sys-color-primary: #9b2c3a;
   --md-sys-color-on-primary: #ffffff;

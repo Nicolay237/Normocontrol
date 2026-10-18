@@ -6,8 +6,9 @@ import NormsList from "../components/NormsList.jsx";
 import ReportView from "../components/ReportView.jsx";
 import AutoFix from "../components/AutoFix.jsx";
 import { Icon } from "../ui.jsx";
+import Progress from "../components/Progress.jsx";
 
-const IDLE = { phase: "idle", report: null, error: null, file: null };
+const IDLE = { phase: "idle", report: null, error: null, file: null, upload: null };
 
 export default function CheckPage({ profileKey }) {
   const { profiles, error: profilesError, config } = useProfiles();
@@ -21,13 +22,13 @@ export default function CheckPage({ profileKey }) {
   }, [profile]);
 
   async function onSubmit(file) {
-    setState({ phase: "loading", report: null, error: null, file });
+    setState({ phase: "loading", report: null, error: null, file, upload: 0 });
     try {
-      const report = await checkFile(file, profileKey);
-      setState({ phase: "done", report, error: null, file });
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      const report = await checkFile(file, profileKey, (upload) => setState((s) => ({ ...s, upload })));
+      setState({ phase: "done", report, error: null, file, upload: null });
+      window.scrollTo({ top: 0 });
     } catch (e) {
-      setState({ phase: "idle", report: null, error: e.message, file: null });
+      setState({ ...IDLE, error: e.message });
     }
   }
 
@@ -47,7 +48,7 @@ export default function CheckPage({ profileKey }) {
       <section className="container page">
         <ReportView key={state.report.report_id} report={state.report}>
           {config.autofix_enabled && !state.report.clean && (
-            <AutoFix file={state.file} profileKey={profileKey} />
+            <AutoFix file={state.file} uploadId={state.report.upload_id} profileKey={profileKey} />
           )}
         </ReportView>
         <div className="reset">
@@ -84,11 +85,11 @@ export default function CheckPage({ profileKey }) {
       </div>
 
       {state.phase === "loading" ? (
-        <div className="loading">
-          <md-circular-progress indeterminate="" />
-          <p className="body-large">Разбираем документ…</p>
-          <p className="body-medium">Обычно это занимает несколько секунд, большие работы — до минуты.</p>
-        </div>
+        <Progress
+          upload={state.upload}
+          workingText="Проверяем оформление…"
+          hint="Обычно несколько секунд, большие работы — до минуты."
+        />
       ) : (
         <UploadForm onSubmit={onSubmit} serverError={state.error} />
       )}
