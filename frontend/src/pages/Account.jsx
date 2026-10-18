@@ -1,0 +1,92 @@
+import { useEffect, useState } from "react";
+import { Navigate, useLocation, useNavigate, Link } from "react-router-dom";
+import { changePassword, logout } from "../api.js";
+import { useSession } from "../ProfilesContext.jsx";
+import { Field, Icon, attr, submitOnEnter } from "../ui.jsx";
+
+export default function Account() {
+  const { user, setSession } = useSession();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [form, setForm] = useState({ current: "", next: "", repeat: "" });
+  const [state, setState] = useState({ busy: false, error: null, done: false });
+
+  useEffect(() => { document.title = "Аккаунт — Нормоконтроль"; }, []);
+  if (!user) return <Navigate to="/login" replace state={{ from: "/account" }} />;
+
+  const first = user.must_change_password;
+  const mismatch = form.repeat && form.next !== form.repeat;
+
+  async function submit(e) {
+    e.preventDefault();
+    if (mismatch) return;
+    setState({ busy: true, error: null, done: false });
+    try {
+      const res = await changePassword(form.current, form.next);
+      setSession(res);
+      setForm({ current: "", next: "", repeat: "" });
+      setState({ busy: false, error: null, done: true });
+      if (first) navigate(location.state?.from || "/", { replace: true });
+    } catch (err) {
+      setState({ busy: false, error: err.message, done: false });
+    }
+  }
+
+  async function doLogout() {
+    await logout().catch(() => {});
+    setSession({ user: null, autofix_enabled: false });
+    navigate("/", { replace: true });
+  }
+
+  return (
+    <section className="container page narrow">
+      <div className="auth-card">
+        <span className="auth-icon"><Icon name={first ? "key" : "user"} /></span>
+        <h1 className="headline-small">{first ? "Придумайте свой пароль" : user.name}</h1>
+        <p className="body-medium muted">
+          {first
+            ? "Вы вошли с временным паролем от администратора. Задайте собственный — после этого откроется автоисправление."
+            : <>Логин: <b>{user.login}</b>{user.role === "admin" && " · администратор"}</>}
+        </p>
+
+        {!first && user.role === "admin" && (
+          <Link to="/admin" className="list-link label-large">
+            <Icon name="users" size={20} /> Управление учётными записями <Icon name="forward" size={18} />
+          </Link>
+        )}
+
+        <form className="form" onSubmit={submit} onKeyDown={submitOnEnter}>
+          {!first && <h2 className="title-medium">Сменить пароль</h2>}
+          <Field
+            label={first ? "Временный пароль" : "Текущий пароль"} type="password" autoComplete="current-password"
+            required value={form.current} onChange={(e) => setForm({ ...form, current: e.target.value })}
+          />
+          <Field
+            label="Новый пароль" type="password" autoComplete="new-password" required minLength={8}
+            hint="Не короче 8 символов" value={form.next} onChange={(e) => setForm({ ...form, next: e.target.value })}
+          />
+          <Field
+            label="Повторите новый пароль" type="password" autoComplete="new-password" required
+            error={mismatch ? "Пароли не совпадают" : null}
+            value={form.repeat} onChange={(e) => setForm({ ...form, repeat: e.target.value })}
+          />
+          {state.error && (
+            <div className="banner banner-error body-medium" role="alert"><Icon name="error" /><span>{state.error}</span></div>
+          )}
+          {state.done && (
+            <div className="banner banner-ok body-medium" role="status"><Icon name="ok" /><span>Пароль изменён.</span></div>
+          )}
+          <md-filled-button type="submit" class="wide" disabled={attr(state.busy || mismatch)}>
+            <Icon name="key" slot="icon" />
+            {state.busy ? "Сохраняем…" : "Сохранить пароль"}
+          </md-filled-button>
+        </form>
+
+        <md-text-button onClick={doLogout} class="logout">
+          <Icon name="logout" slot="icon" />
+          Выйти из аккаунта
+        </md-text-button>
+      </div>
+    </section>
+  );
+}

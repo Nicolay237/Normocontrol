@@ -8,5 +8,15 @@ services:
     autoDeploy: true         # каждый push в master — новый деплой
     healthCheckPath: /health
     envVars:
-      - key: EDITION
-        value: university    # всё бесплатно, автоисправление включено
+      # ключ подписи сессий: Render сгенерирует сам; если поменять — все выйдут из аккаунтов
+      - key: SECRET_KEY
+        generateValue: true
+      # первый администратор: создаётся при запуске, если его ещё нет в базе
+      - key: ADMIN_LOGIN
+        sync: false            # Render спросит значение при создании
+      - key: ADMIN_PASSWORD
+        sync: false
+      # PostgreSQL для учётных записей (строка подключения postgresql://…).
+      # Без неё учётки хранятся во временном файле и пропадают при каждом деплое.
+      - key: DATABASE_URL
+        sync: false

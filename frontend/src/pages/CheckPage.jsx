@@ -10,13 +10,24 @@ import Progress from "../components/Progress.jsx";
 
 const IDLE = { phase: "idle", report: null, error: null, file: null, upload: null };
 
+// Последний результат по каждому типу работы живёт, пока открыта вкладка: можно уйти
+// на страницу входа и вернуться — отчёт и файл для автоисправления никуда не денутся.
+const lastResult = new Map();
+
 export default function CheckPage({ profileKey }) {
   const { profiles, error: profilesError, config } = useProfiles();
   const profile = profiles?.[profileKey];
-  const [state, setState] = useState(IDLE);
+  const [state, setStateRaw] = useState(() => lastResult.get(profileKey) || IDLE);
 
-  // при переключении ВКР ↔ курсовая сбрасываем результат
-  useEffect(() => setState(IDLE), [profileKey]);
+  const setState = (next) => setStateRaw((prev) => {
+    const value = typeof next === "function" ? next(prev) : next;
+    if (value.phase === "done") lastResult.set(profileKey, value);
+    else if (value.phase === "idle") lastResult.delete(profileKey);
+    return value;
+  });
+
+  // при переключении ВКР ↔ курсовая показываем результат именно этого типа работы
+  useEffect(() => setStateRaw(lastResult.get(profileKey) || IDLE), [profileKey]);
   useEffect(() => {
     document.title = `${profile?.title ?? "Проверка"} — Нормоконтроль`;
   }, [profile]);
@@ -47,7 +58,7 @@ export default function CheckPage({ profileKey }) {
     return (
       <section className="container page">
         <ReportView key={state.report.report_id} report={state.report}>
-          {config.autofix_enabled && !state.report.clean && (
+          {!state.report.clean && (
             <AutoFix file={state.file} uploadId={state.report.upload_id} profileKey={profileKey} />
           )}
         </ReportView>

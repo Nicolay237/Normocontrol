@@ -1,23 +1,47 @@
-import { NavLink, Link, Route, Routes } from "react-router-dom";
-import { ProfilesProvider } from "./ProfilesContext.jsx";
+import { NavLink, Link, Route, Routes, useLocation } from "react-router-dom";
+import { ProfilesProvider, useSession } from "./ProfilesContext.jsx";
 import { Icon } from "./ui.jsx";
 import Home from "./pages/Home.jsx";
 import CheckPage from "./pages/CheckPage.jsx";
+import Login from "./pages/Login.jsx";
+import Account from "./pages/Account.jsx";
+import Admin from "./pages/Admin.jsx";
+
+function UserButton() {
+  const { user } = useSession();
+  const location = useLocation();
+  if (!user)
+    return (
+      <Link to="/login" state={{ from: location.pathname }} className="account-btn label-large" aria-label="Войти">
+        <Icon name="login" size={20} /><span className="account-text">Войти</span>
+        <md-ripple />
+      </Link>
+    );
+  return (
+    <Link to={user.role === "admin" ? "/admin" : "/account"} className="account-btn label-large"
+          aria-label={`Аккаунт: ${user.name}`} title={user.name}>
+      <Icon name={user.role === "admin" ? "admin" : "user"} size={20} />
+      <span className="account-text">{user.name.split(" ")[0]}</span>
+      <md-ripple />
+    </Link>
+  );
+}
 
 export default function App() {
   return (
     <ProfilesProvider>
       <header className="app-bar">
         <div className="container app-bar-inner">
-        <Link to="/" className="brand title-large">
-          <span className="brand-mark"><Icon name="brand" /></span>
-          <span className="brand-text">Нормоконтроль</span>
-        </Link>
-        <nav className="tabs" aria-label="Тип работы">
-          <NavLink to="/vkr" className="tab label-large">ВКР<md-ripple /></NavLink>
-          <NavLink to="/coursework" className="tab label-large">Курсовая<md-ripple /></NavLink>
-        </nav>
-        <span className="gost label-medium">ГОСТ 7.32&#8209;2017</span>
+          <Link to="/" className="brand title-large">
+            <span className="brand-mark"><Icon name="brand" /></span>
+            <span className="brand-text">Нормоконтроль</span>
+          </Link>
+          <nav className="tabs" aria-label="Тип работы">
+            <NavLink to="/vkr" className="tab label-large">ВКР<md-ripple /></NavLink>
+            <NavLink to="/coursework" className="tab label-large">Курсовая<md-ripple /></NavLink>
+          </nav>
+          <span className="gost label-medium">ГОСТ 7.32&#8209;2017</span>
+          <UserButton />
         </div>
       </header>
 
@@ -26,6 +50,9 @@ export default function App() {
           <Route path="/" element={<Home />} />
           <Route path="/vkr" element={<CheckPage profileKey="vkr" />} />
           <Route path="/coursework" element={<CheckPage profileKey="coursework" />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/account" element={<Account />} />
+          <Route path="/admin" element={<Admin />} />
           <Route path="*" element={<Home notFound />} />
         </Routes>
       </main>

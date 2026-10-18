@@ -1,5 +1,7 @@
 import { useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { fixFile, fixedUrl } from "../api.js";
+import { useSession } from "../ProfilesContext.jsx";
 import { Icon, attr } from "../ui.jsx";
 import { IssueList, plural } from "./ReportView.jsx";
 import Progress from "./Progress.jsx";
@@ -18,6 +20,8 @@ function Card({ icon, done, children }) {
 
 export default function AutoFix({ file, uploadId, profileKey }) {
   const [state, setState] = useState({ phase: "idle", result: null, error: null, upload: null });
+  const { user, autofixEnabled, setSession } = useSession();
+  const location = useLocation();
   const isDocx = /\.docx$/i.test(file?.name ?? "");
 
   async function run() {
@@ -30,6 +34,7 @@ export default function AutoFix({ file, uploadId, profileKey }) {
       });
       setState({ phase: "done", result, error: null, upload: null });
     } catch (e) {
+      if (e.code === "login_required") setSession({ user: null, autofix_enabled: false }); // сессия истекла
       setState({ phase: "idle", result: null, error: e.message, upload: null });
     }
   }
@@ -39,6 +44,37 @@ export default function AutoFix({ file, uploadId, profileKey }) {
       <Card icon="fix">
         <h2 className="title-large">Автоисправление недоступно для PDF</h2>
         <p className="body-medium">Загрузите исходный документ Word (.docx) — его можно исправить автоматически.</p>
+      </Card>
+    );
+
+  if (!user)
+    return (
+      <Card icon="lock">
+        <h2 className="title-large">Автоисправление — для университета</h2>
+        <p className="body-medium">
+          Сотрудники и студенты университета исправляют оформление бесплатно — войдите с логином от кафедры.
+          Для остальных автоисправление скоро станет доступно платно.
+        </p>
+        <Link to="/login" state={{ from: location.pathname }} className="link-btn">
+          <md-filled-button>
+            <Icon name="login" slot="icon" />
+            Войти
+          </md-filled-button>
+        </Link>
+      </Card>
+    );
+
+  if (!autofixEnabled)
+    return (
+      <Card icon="key">
+        <h2 className="title-large">Смените временный пароль</h2>
+        <p className="body-medium">Автоисправление откроется, как только вы зададите собственный пароль.</p>
+        <Link to="/account" state={{ from: location.pathname }} className="link-btn">
+          <md-filled-button>
+            <Icon name="key" slot="icon" />
+            Задать пароль
+          </md-filled-button>
+        </Link>
       </Card>
     );
 

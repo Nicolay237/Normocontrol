@@ -18,6 +18,8 @@ from checker import (
     PROFILES, describe_profile, run_normocontrol_cached, build_html_report,
 )
 from checker.fixers import fix_docx
+import auth
+from auth import can_autofix, current_user, public_user
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DIST_DIR = os.path.join(BASE_DIR, "frontend", "dist")
@@ -28,13 +30,10 @@ app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024  # 20 МБ на файл
 
 ALLOWED_EXT = {".docx", ".pdf"}
 
-# Редакция сервиса: university — всё бесплатно (для кафедры); public — платное автоисправление
-# (оплата ещё не подключена, поэтому в public автоисправление выключено).
-EDITION = os.environ.get("EDITION", "university").lower()
-
-
-def can_autofix():
-    return EDITION == "university"
+# Учётки университета: вход по логину/паролю от администратора (см. auth.py).
+# Проверка доступна всем; автоисправление — вошедшим пользователям университета
+# (для остальных позже появится оплата).
+auth.init_app(app, BASE_DIR)
 
 
 # ── короткоживущее хранилище файлов на диске ──────────────────────────────
@@ -101,7 +100,11 @@ def health():
 
 @app.route("/api/config")
 def api_config():
-    return jsonify(edition=EDITION, autofix_enabled=can_autofix())
+    return jsonify(_client_config())
+
+
+def _client_config():
+    return {"autofix_enabled": can_autofix(), "user": public_user(current_user())}
 
 
 @app.route("/api/profiles")
@@ -145,8 +148,10 @@ def api_check():
 
 @app.route("/api/fix", methods=["POST"])
 def api_fix():
+    if not current_user():
+        return jsonify(error="Автоисправление доступно после входа в аккаунт университета.", code="login_required"), 401
     if not can_autofix():
-        return jsonify(error="Автоисправление в этой версии недоступно."), 403
+        return jsonify(error="Сначала смените временный пароль.", code="password_change_required"), 403
     profile = request.form.get("profile", "vkr")
     if profile not in PROFILES:
         return jsonify(error="Неизвестный тип работы."), 400
@@ -232,7 +237,9 @@ def compress_and_cache(resp):
         # у файлов Vite хеш в имени — можно кешировать навсегда
         resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
     elif resp.mimetype == "text/html" and not path.startswith("/api/"):
-        resp.headers["Cache-Control"] = "no-cache"   # index.html всегда свежий, иначе не увидят новый деплой
+        # index.html всегда свежий (иначе не увидят новый деплой) и личный — в нём данные о пользователе
+        resp.headers["Cache-Control"] = "private, no-cache"
+        resp.headers["Vary"] = "Cookie"
 
     if ("gzip" not in request.headers.get("Accept-Encoding", "")
             or resp.status_code != 200 or "Content-Encoding" in resp.headers
@@ -253,7 +260,7 @@ def compress_and_cache(resp):
             _GZ_CACHE[path] = (len(data), gz)
     resp.set_data(gz)
     resp.headers["Content-Encoding"] = "gzip"
-    resp.headers["Vary"] = "Accept-Encoding"
+    resp.headers["Vary"] = ", ".join(filter(None, [resp.headers.get("Vary"), "Accept-Encoding"]))
     resp.headers["Content-Length"] = str(len(gz))
     return resp
 
@@ -275,27 +282,26 @@ def spa(path):
     return Response(_index_html(), mimetype="text/html")  # клиентский роутинг (/vkr, /coursework)
 
 
-_INDEX = {}   # mtime index.html → готовый HTML с данными
+_INDEX = {}   # mtime index.html → (до вставки, после вставки)
 
 
 def _index_html():
     """
-    index.html со встроенными профилями и конфигом (window.__BOOT__): страница
-    рисуется сразу, без двух дополнительных запросов к API — на мобильном
-    интернете это заметно ускоряет первый показ.
+    index.html со встроенными профилями, конфигом и текущим пользователем (window.__BOOT__):
+    страница рисуется сразу, без дополнительных запросов к API — на мобильном интернете это
+    заметно ускоряет первый показ. Шаблон кешируется, данные о пользователе — на каждый запрос.
     """
     path = os.path.join(DIST_DIR, "index.html")
     mtime = os.path.getmtime(path)
     if _INDEX.get("mtime") != mtime:
-        boot = {"profiles": [describe_profile(p) for p in PROFILES.values()],
-                "config": {"edition": EDITION, "autofix_enabled": can_autofix()}}
-        # "</" экранируем, чтобы строка в JSON не закрыла тег <script>
-        payload = json.dumps(boot, ensure_ascii=False).replace("</", "<\\/")
         with open(path, encoding="utf-8") as fh:
-            html = fh.read()
-        html = html.replace("</head>", f"<script>window.__BOOT__={payload}</script>\n</head>", 1)
-        _INDEX.update(mtime=mtime, html=html)
-    return _INDEX["html"]
+            head, _, tail = fh.read().partition("</head>")
+        _INDEX.update(mtime=mtime, head=head, tail=tail,
+                      profiles=[describe_profile(p) for p in PROFILES.values()])
+    boot = {"profiles": _INDEX["profiles"], "config": _client_config()}
+    # "</" экранируем, чтобы строка в JSON не закрыла тег <script>
+    payload = json.dumps(boot, ensure_ascii=False).replace("</", "<\\/")
+    return f"{_INDEX['head']}<script>window.__BOOT__={payload}</script>\n</head>{_INDEX['tail']}"
 
 
 if __name__ == "__main__":

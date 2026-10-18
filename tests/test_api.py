@@ -30,8 +30,15 @@ def post(client, url, **fields):
     return client.post(url, data=fields, content_type="multipart/form-data")
 
 
-def test_check_then_fix_by_upload_id():
+def logged_in_client():
+    """Клиент, вошедший как пользователь университета."""
     c = server.app.test_client()
+    assert c.post("/api/login", json={"login": "admin", "password": "admin-pass-123"}).status_code == 200
+    return c
+
+
+def test_check_then_fix_by_upload_id():
+    c = logged_in_client()
     data = docx_bytes(broken())
     r = post(c, "/api/check", profile="vkr", file=(io.BytesIO(data), "работа.docx"))
     rep = r.get_json()
@@ -52,13 +59,13 @@ def test_check_then_fix_by_upload_id():
 
 
 def test_fix_with_unknown_upload_id_asks_for_file():
-    c = server.app.test_client()
+    c = logged_in_client()
     r = post(c, "/api/fix", profile="vkr", upload_id="0" * 32)
     assert r.status_code == 410 and r.get_json()["code"] == "upload_expired"
 
 
 def test_fix_fallback_with_file():
-    c = server.app.test_client()
+    c = logged_in_client()
     r = post(c, "/api/fix", profile="vkr", file=(io.BytesIO(docx_bytes(broken())), "w.docx"))
     assert r.status_code == 200 and r.get_json()["total_fixed"] > 0
 
