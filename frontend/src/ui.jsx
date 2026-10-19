@@ -48,6 +48,19 @@ const ICONS = {
   search: Search,
 };
 
+/** Логотип: штамп нормоконтроля «НК». Цвета берутся из темы. */
+export const Logo = ({ size = 40 }) => (
+  <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true" className="logo">
+    <g transform="rotate(-12 16 16)">
+      <circle cx="16" cy="16" r="14.5" fill="var(--md-sys-color-primary)" />
+      <circle cx="16" cy="16" r="11.6" fill="none" stroke="var(--md-sys-color-on-primary)"
+              strokeWidth="1.2" strokeDasharray="2.2 1.4" />
+      <text x="16" y="20.2" textAnchor="middle" fontFamily="Georgia, 'Times New Roman', serif"
+            fontWeight="700" fontSize="12" fill="var(--md-sys-color-on-primary)">НК</text>
+    </g>
+  </svg>
+);
+
 /** Иконка Lucide по короткому имени. Лишние props (например slot="icon" для кнопок M3) уходят на <svg>. */
 export const Icon = ({ name, size = 24, ...props }) => {
   const Cmp = ICONS[name];

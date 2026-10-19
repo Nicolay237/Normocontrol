@@ -35,6 +35,8 @@ md-filled-button, md-filled-tonal-button, md-outlined-button, md-text-button {
 .app-bar { background: var(--md-sys-color-surface-container); position: sticky; top: 0; z-index: 5; }
 .app-bar-inner { display: flex; align-items: center; gap: 16px; height: 64px; }
 .brand { display: flex; align-items: center; gap: 12px; color: var(--md-sys-color-on-surface); white-space: nowrap; }
+.logo { flex-shrink: 0; transition: transform .2s; }
+.brand:hover .logo { transform: rotate(-8deg); }
 .brand-mark {
   display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%;
   background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary);
@@ -254,7 +256,7 @@ details[open] > summary .chevron { transform: rotate(180deg); }
 @media (max-width: 600px) {
   .app-bar-inner { gap: 8px; }
   .brand { gap: 8px; font-size: 18px; }
-  .brand-mark { width: 36px; height: 36px; }
+  .logo { width: 36px; height: 36px; }
   .tabs { margin-left: auto; }
   .tab { padding: 0 12px; }
   .gost { display: none; }
@@ -276,6 +278,46 @@ details[open] > summary .chevron { transform: rotate(180deg); }
 }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .chevron { transition: none; } }
 a:focus-visible, summary:focus-visible, .chip:focus-visible { outline: 2px solid var(--md-sys-color-primary); outline-offset: 2px; }
+
+/* ── предложение автоисправления ── */
+.offer {
+  position: relative; overflow: hidden; margin-top: 16px; padding: 24px var(--pad);
+  display: flex; flex-direction: column; gap: 16px; border-radius: var(--shape-xl);
+  background:
+    radial-gradient(110% 120% at 100% 0%, var(--md-sys-color-primary-container) 0%, transparent 60%),
+    var(--md-sys-color-surface-container-low);
+  border: 1px solid var(--md-sys-color-outline-variant);
+}
+.offer > :not(.offer-art) { position: relative; }
+.offer-art {
+  position: absolute; right: 16px; top: 16px; transform: rotate(-12deg);
+  color: var(--md-sys-color-primary); opacity: .1; pointer-events: none;
+}
+.offer-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.price {
+  padding: 4px 14px; border-radius: 12px; font-weight: 500;
+  background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary);
+}
+.offer-title { font-weight: 400; max-width: 26ch; text-wrap: balance; }
+.before-after { display: flex; align-items: center; gap: 16px; color: var(--md-sys-color-on-surface-variant); }
+.before-after > div { display: flex; flex-direction: column; }
+.ba-num { font: 400 36px/44px var(--md-ref-typeface-brand); font-variant-numeric: tabular-nums; }
+.ba-num.bad { color: var(--md-sys-color-error); }
+.ba-num.ok { color: var(--md-sys-color-tertiary); }
+.benefits { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 24px; }
+.benefits li { display: flex; gap: 8px; align-items: flex-start; }
+.benefits svg { color: var(--md-sys-color-tertiary); margin-top: 1px; }
+.offer-cta { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.buy { --md-filled-button-container-height: 52px; --md-filled-button-label-text-size: 16px; --md-filled-button-container-shape: 26px; }
+.offer .banner { margin: 0; }
+.offer-uni { color: var(--md-sys-color-on-surface-variant); }
+.offer-uni a { color: var(--md-sys-color-primary); font-weight: 500; text-decoration: underline; text-underline-offset: 3px; }
+@media (max-width: 600px) {
+  .offer-art { display: none; }
+  .benefits { grid-template-columns: 1fr; }
+  .buy { width: 100%; }
+  .offer-cta { flex-direction: column; align-items: stretch; text-align: center; gap: 8px; }
+}
 
 /* ── текст для поисковиков, видимый до запуска React ── */
 .seo-prerender { max-width: 880px; margin: 0 auto; padding: 32px 16px; line-height: 1.6; }

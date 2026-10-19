@@ -186,7 +186,7 @@ def build_html_report(report, source_name):
 <meta name="color-scheme" content="light dark">
 <title>Отчёт нормоконтроля — {e(source_name)}</title><style>{_CSS}</style></head>
 <body><div class="wrap">
-<div class="bar"><span class="mark">{_svg("brand")}</span>Нормоконтроль<span class="tag">ГОСТ 7.32-2017</span></div>
+<div class="bar"><svg class="stamp" width="36" height="36" viewBox="0 0 32 32" aria-hidden="true"><g transform="rotate(-12 16 16)"><circle cx="16" cy="16" r="14.5" fill="var(--primary)"/><circle cx="16" cy="16" r="11.6" fill="none" stroke="var(--on-primary)" stroke-width="1.2" stroke-dasharray="2.2 1.4"/><text x="16" y="20.2" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-weight="700" font-size="12" fill="var(--on-primary)">НК</text></g></svg>Нормоконтроль<span class="tag">ГОСТ 7.32-2017</span></div>
 <div class="summary">
   <span class="s-icon {kind}">{_svg(kind)}</span>
   <div>

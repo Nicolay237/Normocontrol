@@ -1,6 +1,6 @@
 import { NavLink, Link, Route, Routes, useLocation } from "react-router-dom";
 import { ProfilesProvider, useSession } from "./ProfilesContext.jsx";
-import { Icon } from "./ui.jsx";
+import { Icon, Logo } from "./ui.jsx";
 import Home from "./pages/Home.jsx";
 import CheckPage from "./pages/CheckPage.jsx";
 import Login from "./pages/Login.jsx";
@@ -34,7 +34,7 @@ export default function App() {
       <header className="app-bar">
         <div className="container app-bar-inner">
           <Link to="/" className="brand title-large">
-            <span className="brand-mark"><Icon name="brand" /></span>
+            <Logo />
             <span className="brand-text">Нормоконтроль</span>
           </Link>
           <nav className="tabs" aria-label="Тип работы">

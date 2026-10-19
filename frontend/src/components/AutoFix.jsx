@@ -5,6 +5,7 @@ import { useSession } from "../ProfilesContext.jsx";
 import { Icon, attr } from "../ui.jsx";
 import { IssueList, plural } from "./ReportView.jsx";
 import Progress from "./Progress.jsx";
+import Offer from "./Offer.jsx";
 
 /** Карточка: иконка слева, весь контент — в одной колонке справа от неё. */
 function Card({ icon, done, children }) {
@@ -18,7 +19,7 @@ function Card({ icon, done, children }) {
   );
 }
 
-export default function AutoFix({ file, uploadId, profileKey }) {
+export default function AutoFix({ file, uploadId, profileKey, total = 0, fixable = 0 }) {
   const [state, setState] = useState({ phase: "idle", result: null, error: null, upload: null });
   const { user, autofixEnabled, setSession } = useSession();
   const location = useLocation();
@@ -47,22 +48,7 @@ export default function AutoFix({ file, uploadId, profileKey }) {
       </Card>
     );
 
-  if (!user)
-    return (
-      <Card icon="lock">
-        <h2 className="title-large">Автоисправление — для университета</h2>
-        <p className="body-medium">
-          Сотрудники и студенты университета исправляют оформление бесплатно — войдите с логином от кафедры.
-          Для остальных автоисправление скоро станет доступно платно.
-        </p>
-        <Link to="/login" state={{ from: location.pathname }} className="link-btn">
-          <md-filled-button>
-            <Icon name="login" slot="icon" />
-            Войти
-          </md-filled-button>
-        </Link>
-      </Card>
-    );
+  if (!user) return <Offer total={total} fixable={fixable} />;
 
   if (!autofixEnabled)
     return (

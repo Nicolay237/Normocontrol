@@ -85,3 +85,11 @@ def test_pdf_has_no_upload_id():
 def test_store_path_traversal_rejected():
     assert server.store.get("../app.py", "upload") is None
     assert server.store.get("", "upload") is None
+
+
+def test_check_reports_fixable_estimate_and_price():
+    c = server.app.test_client()
+    rep = post(c, "/api/check", profile="vkr", file=(io.BytesIO(docx_bytes(broken())), "w.docx")).get_json()
+    assert 0 < rep["fixable"] <= rep["total"]
+    cfg = c.get("/api/config").get_json()
+    assert cfg["autofix_price"] > 0 and cfg["payments_enabled"] is False

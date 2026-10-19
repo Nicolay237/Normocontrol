@@ -59,7 +59,8 @@ export default function CheckPage({ profileKey }) {
       <section className="container page">
         <ReportView key={state.report.report_id} report={state.report}>
           {!state.report.clean && (
-            <AutoFix file={state.file} uploadId={state.report.upload_id} profileKey={profileKey} />
+            <AutoFix file={state.file} uploadId={state.report.upload_id} profileKey={profileKey}
+                     total={state.report.total} fixable={state.report.fixable || 0} />
           )}
         </ReportView>
         <div className="reset">

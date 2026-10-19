@@ -19,7 +19,7 @@ from flask import Flask, request, jsonify, Response, send_from_directory, send_f
 from checker import (
     PROFILES, describe_profile, run_normocontrol_cached, build_html_report,
 )
-from checker.fixers import fix_docx
+from checker.fixers import fix_docx, estimate_fixable
 from checker.annotate import annotate_docx
 import auth
 import seo
@@ -140,8 +140,14 @@ def api_config():
     return jsonify(_client_config())
 
 
+# Цена автоисправления для пользователей без входа (оплата подключается следующим шагом).
+AUTOFIX_PRICE = int(os.environ.get("AUTOFIX_PRICE", "149"))
+PAYMENTS_ENABLED = os.environ.get("PAYMENTS_ENABLED") == "1"
+
+
 def _client_config():
-    return {"autofix_enabled": can_autofix(), "user": public_user(current_user())}
+    return {"autofix_enabled": can_autofix(), "user": public_user(current_user()),
+            "autofix_price": AUTOFIX_PRICE, "payments_enabled": PAYMENTS_ENABLED}
 
 
 @app.route("/api/profiles")
@@ -180,6 +186,7 @@ def api_check():
     data = report.to_dict(f.filename)
     data["report_id"] = store.put("report", f.filename, data=build_html_report(report, f.filename))
     data["upload_id"] = upload_id
+    data["fixable"] = estimate_fixable(report) if upload_id else 0
     return jsonify(data)
 
 
