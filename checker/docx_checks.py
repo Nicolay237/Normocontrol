@@ -12,6 +12,7 @@ from .docx_utils import (
 )
 from .norms import STRUCTURAL_HEADINGS
 from .typography import check_typography
+from .bibliography import check_bibliography, find_section as find_bib_section
 
 HEADING_STYLE_RE = re.compile(r"^(?:heading|заголовок)\s*(\d+)$", re.IGNORECASE)
 TITLE_STYLES = ("title", "название", "subtitle", "подзаголовок")
@@ -235,8 +236,12 @@ class DocxChecker:
         self.check_tables(items)
         self.check_structure(items)
         self.check_new_page(items)
+        check_bibliography(self, items)
+        # записи списка источников: по ГОСТ Р 7.0.100 в них « : », « / », « ; » — с пробелами
+        bib_ids = {id(p._p) for p in find_bib_section(self, items)[1]}
         check_typography(
-            [(self._loc(it["obj"]), self.text(it["obj"]), it["role"], has_page_break(it["obj"]))
+            [(self._loc(it["obj"]), self.text(it["obj"]),
+              "bib" if id(it["obj"]._p) in bib_ids else it["role"], has_page_break(it["obj"]))
              for it in items if it["kind"] == "p" and it["role"] not in ("toc", "skip")],
             self.report,
         )

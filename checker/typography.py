@@ -37,7 +37,8 @@ def check_typography(labeled, report):
             continue
         if MULTI_SPACE.search(text):
             report.add(loc, "Пробелы", "обнаружен двойной (или более) пробел")
-        m = SPACE_BEFORE_SIMPLE.search(text) or SPACE_BEFORE_DOT.search(text)
+        # в библиографических записях пробелы перед «:», «;» требует ГОСТ Р 7.0.100
+        m = None if role == "bib" else (SPACE_BEFORE_SIMPLE.search(text) or SPACE_BEFORE_DOT.search(text))
         if m:
             report.add(loc, "Пробелы", f"лишний пробел перед знаком препинания «{m.group(1)}»")
         if role not in ("heading", "structural") and (text.startswith(" ") or text.startswith("\t")):

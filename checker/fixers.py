@@ -30,6 +30,7 @@ from .docx_checks import (
 )
 from .docx_utils import get_all_runs, run_in_hyperlink, has_image, has_page_break, emu_to_cm
 from .report import Report
+from . import bibliography as bib
 from .typography import SPACE_BEFORE_SIMPLE, SPACE_BEFORE_DOT, MULTI_SPACE
 
 TNR = "Times New Roman"
@@ -44,9 +45,19 @@ FIXABLE_CATEGORIES = {
 }
 
 
+# Замечания к списку источников, которые исправитель правит сам (начало текста замечания)
+FIXABLE_BIB_MESSAGES = (
+    "после фамилии автора ставится запятая", "инициалы пишутся через пробел", "место издания пишется полностью",
+    "место издания и издательство разделяются", "вместо дефиса с пробелами", "после знака «№»",
+    "перед «URL:» ставятся точка и тире",
+)
+
+
 def estimate_fixable(report):
     """Сколько замечаний отчёта исправитель, скорее всего, устранит (оценка до запуска)."""
-    return sum(1 for i in report.issues if i.category in FIXABLE_CATEGORIES)
+    return sum(1 for i in report.issues
+               if i.category in FIXABLE_CATEGORIES
+               or (i.category == "Список источников" and i.message.startswith(FIXABLE_BIB_MESSAGES)))
 
 
 @dataclass
@@ -134,6 +145,41 @@ def _wts(p):
     return [t for t in p._p.iter(qn("w:t"))]
 
 
+def _replace_spans(ts, edits):
+    """
+    Применяет правки (начало, конец, текст) к склеенному тексту элементов w:t,
+    сохраняя разбиение на run'ы: новый текст попадает в run, где начинается правка,
+    удалённые символы вырезаются из всех задетых run'ов. Пересекающиеся правки отбрасываются.
+    """
+    if not edits:
+        return False
+    starts, pos = [], 0
+    for t in ts:
+        starts.append(pos)
+        pos += len(t.text or "")
+    chosen, last_start = [], None
+    for a, b, new in sorted(edits, key=lambda e: (e[0], e[1]), reverse=True):
+        if last_start is not None and b > last_start:
+            continue
+        chosen.append((a, b, new))
+        last_start = a
+    for a, b, new in chosen:          # с конца, чтобы смещения более ранних правок не менялись
+        idx = next((i for i in range(len(ts) - 1, -1, -1) if starts[i] <= a), 0)
+        for i in range(len(ts)):
+            text = ts[i].text or ""
+            lo, hi = starts[i], starts[i] + len(text)
+            cut_a, cut_b = max(a, lo), min(b, hi)
+            piece_new = new if i == idx else ""
+            if i == idx or (cut_a < cut_b):
+                ka, kb = cut_a - lo, max(cut_a, cut_b) - lo
+                if i == idx and not (lo <= a <= hi):
+                    continue
+                ts[i].text = text[:ka] + piece_new + text[kb:]
+                if piece_new:
+                    ts[i].set(qn("xml:space"), "preserve")
+    return True
+
+
 def _has_field(p):
     return bool(p._p.xpath(".//w:fldChar | .//w:fldSimple | .//w:instrText"))
 
@@ -186,6 +232,7 @@ class _Fixer:
     # ---- запуск
     def run(self):
         items = self.chk.prepare()
+        self._bib_ids = {id(p._p) for p in bib.find_section(self.chk, items)[1]}
         self.fix_sections()
         self.fix_page_numbers()
         prev_formula = False
@@ -214,6 +261,7 @@ class _Fixer:
             it["obj"].paragraph_format.page_break_before = True
             self.done("Заголовок начат с новой страницы")
         self.remove_extra_empty(items)
+        self.fix_bibliography(items)
 
     # ---- страница
     def fix_sections(self):
@@ -444,8 +492,9 @@ class _Fixer:
         for t in _wts(p):
             old = (t.text or "")
             new = MULTI_SPACE.sub(" ", old)
-            new = SPACE_BEFORE_SIMPLE.sub(r"\1", new)
-            new = SPACE_BEFORE_DOT.sub(r"\1", new)
+            if id(p._p) not in self._bib_ids:   # в записях списка « : » и « ; » — по ГОСТ Р 7.0.100
+                new = SPACE_BEFORE_SIMPLE.sub(r"\1", new)
+                new = SPACE_BEFORE_DOT.sub(r"\1", new)
             if new != old:
                 t.text = new
                 changed = True
@@ -470,6 +519,55 @@ class _Fixer:
                         el.text = ""
                     elif el.tag != qn("w:rPr"):
                         return
+
+    # ---- список источников: только однозначные правки текста записи
+    def fix_bibliography(self, items):
+        """
+        Word режет текст записи на много run'ов (проверка орфографии, гиперссылки), поэтому
+        правки делаются по склеенному тексту абзаца и раскладываются обратно по run'ам
+        (_replace_spans): форматирование и гиперссылки сохраняются.
+        """
+        _, entries = bib.find_section(self.chk, items)
+        for p in entries:
+            ts = _wts(p)
+            full = "".join(t.text or "" for t in ts)
+            if not full.strip():
+                continue
+            edits = []   # (начало, конец, новый текст) в координатах full
+
+            m_num = bib.NUM_PREFIX.match(full)
+            head_at = m_num.end() if m_num and not self.res.is_numbered(p) else 0
+            rest = full[head_at:]
+            m = bib.HEAD_NO_COMMA.match(rest)
+            if m:
+                edits.append((head_at + m.start(), head_at + m.end(), f"{m.group(1)}, {bib._spaced(m.group(2))}"))
+            else:
+                m = re.match(r"(?:[А-ЯЁA-Z][а-яёa-z]+(?:-[А-ЯЁA-Z][а-яёa-z]+)?),\s+[А-ЯЁA-Z]\.(?=[А-ЯЁA-Z]\.)", rest)
+                if m:
+                    edits.append((head_at + m.end(), head_at + m.end(), " "))
+
+            for mm in bib.HYPHEN_SEP.finditer(full):
+                edits.append((mm.start(), mm.end(), " – "))
+            for mm in bib.NO_SPACE_NUMBER.finditer(full):
+                edits.append((mm.start(), mm.end(), "№ "))
+            for mm in bib.CITY_ABBR.finditer(full):
+                city = bib.CITY_FULL.get(mm.group(1).replace(" ", ""))
+                if city:
+                    edits.append((mm.start(), mm.end(), city + " :"))
+            for mm in re.finditer(r"(?<=[–—]\s)([А-ЯЁ][а-яё-]+)(\s?):(\s?)(?=[«\"А-ЯЁA-Z])", full):
+                if mm.group(2) != " " or mm.group(3) != " ":
+                    edits.append((mm.start(), mm.end(), mm.group(1) + " : "))
+
+            mu = bib.URL_LABEL.search(full)
+            if mu:
+                before = full[:mu.start()]
+                stripped = before.rstrip()
+                if stripped and not re.search(r"[–—]$", stripped):
+                    sep = " – " if stripped.endswith(".") else ". – "
+                    edits.append((len(stripped), mu.start(), sep))
+
+            if _replace_spans(ts, edits):
+                self.done("Исправлено оформление записей в списке источников")
 
     def remove_extra_empty(self, items):
         prev_empty = False
