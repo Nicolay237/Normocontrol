@@ -20,7 +20,7 @@ export default function Offer({ total, fixable }) {
   const { config } = useProfiles();
   const location = useLocation();
   const [soon, setSoon] = useState(false);
-  const price = config.autofix_price ?? 149;
+  const price = config.autofix_price ?? 99;
   const left = Math.max(0, total - fixable);
 
   return (
@@ -38,12 +38,14 @@ export default function Offer({ total, fixable }) {
       </h2>
 
       {fixable > 0 && (
-        <div className="before-after" aria-label={`Сейчас ${total}, после исправления — ${left <= 5 ? "единицы" : `около ${left}`}`}>
-          <div><span className="ba-num bad">{total}</span><span className="label-medium">сейчас</span></div>
-          <Icon name="forward" size={28} />
-          {/* оценка до запуска исправления: точное число не обещаем, когда остаток мал */}
-          <div><span className="ba-num ok">{left <= 5 ? "единицы" : `≈ ${left}`}</span><span className="label-medium">после исправления</span></div>
-        </div>
+        // оценка до запуска исправления: точное число не обещаем, когда остаток мал
+        <p className="body-medium muted offer-estimate">
+          {left === 0
+            ? "После исправления замечаний по оформлению не останется."
+            : left <= 5
+              ? "После исправления останутся единичные замечания — их нужно будет поправить вручную."
+              : `После исправления останется около ${left} — их нужно будет поправить вручную.`}
+        </p>
       )}
 
       <ul className="benefits body-medium">
@@ -72,7 +74,7 @@ export default function Offer({ total, fixable }) {
       )}
 
       <p className="body-medium offer-uni">
-        Вы из университета?{" "}
+        Вы преподаватель?{" "}
         <Link to="/login" state={{ from: location.pathname }}>Войдите</Link> — для вас бесплатно.
       </p>
     </section>

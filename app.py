@@ -141,7 +141,7 @@ def api_config():
 
 
 # Цена автоисправления для пользователей без входа (оплата подключается следующим шагом).
-AUTOFIX_PRICE = int(os.environ.get("AUTOFIX_PRICE", "149"))
+AUTOFIX_PRICE = int(os.environ.get("AUTOFIX_PRICE", "99"))
 PAYMENTS_ENABLED = os.environ.get("PAYMENTS_ENABLED") == "1"
 
 

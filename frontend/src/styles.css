@@ -299,11 +299,7 @@ a:focus-visible, summary:focus-visible, .chip:focus-visible { outline: 2px solid
   background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary);
 }
 .offer-title { font-weight: 400; max-width: 26ch; text-wrap: balance; }
-.before-after { display: flex; align-items: center; gap: 16px; color: var(--md-sys-color-on-surface-variant); }
-.before-after > div { display: flex; flex-direction: column; }
-.ba-num { font: 400 36px/44px var(--md-ref-typeface-brand); font-variant-numeric: tabular-nums; }
-.ba-num.bad { color: var(--md-sys-color-error); }
-.ba-num.ok { color: var(--md-sys-color-tertiary); }
+.offer-estimate { margin-top: -8px; max-width: 60ch; }
 .benefits { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 24px; }
 .benefits li { display: flex; gap: 8px; align-items: flex-start; }
 .benefits svg { color: var(--md-sys-color-tertiary); margin-top: 1px; }
