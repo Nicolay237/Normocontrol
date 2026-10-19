@@ -7,6 +7,7 @@ import Login from "./pages/Login.jsx";
 import Account from "./pages/Account.jsx";
 import Admin from "./pages/Admin.jsx";
 import Gost from "./pages/Gost.jsx";
+import ThemeToggle from "./components/ThemeToggle.jsx";
 
 function UserButton() {
   const { user } = useSession();
@@ -42,6 +43,7 @@ export default function App() {
             <NavLink to="/coursework" className="tab label-large">Курсовая<md-ripple /></NavLink>
           </nav>
           <span className="gost label-medium">ГОСТ 7.32&#8209;2017</span>
+          <ThemeToggle />
           <UserButton />
         </div>
       </header>

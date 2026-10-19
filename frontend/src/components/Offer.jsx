@@ -31,7 +31,7 @@ export default function Offer({ total, fixable }) {
         <span className="price title-large">{price}&nbsp;₽</span>
       </div>
 
-      <h2 className="headline-small offer-title">Исправим оформление за пару секунд вместо пары вечеров</h2>
+      <h2 className="headline-small offer-title">Исправим оформление за пару секунд</h2>
 
       {fixable > 0 && (
         // оценка до запуска исправления: точное число не обещаем, когда остаток мал

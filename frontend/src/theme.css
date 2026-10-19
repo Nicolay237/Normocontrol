@@ -58,8 +58,10 @@
   --shape-xs: 4px; --shape-sm: 8px; --shape-md: 12px; --shape-lg: 16px; --shape-xl: 28px;
 }
 
+/* Тёмная тема: по настройке системы, если пользователь не выбрал светлую явно,
+   или принудительно, если выбрал тёмную (переключатель в шапке ставит data-theme на <html>). */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     color-scheme: dark;
     --md-sys-color-primary: #ffb3b2;
     --md-sys-color-on-primary: #5f1220;
@@ -94,6 +96,42 @@
     --md-sys-color-surface-container-highest: #3d3232;
     --md-sys-color-surface-tint: #ffb3b2;
   }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --md-sys-color-primary: #ffb3b2;
+  --md-sys-color-on-primary: #5f1220;
+  --md-sys-color-primary-container: #7d2330;
+  --md-sys-color-on-primary-container: #ffdad9;
+  --md-sys-color-secondary: #e7bdbb;
+  --md-sys-color-on-secondary: #442928;
+  --md-sys-color-secondary-container: #5d3f3e;
+  --md-sys-color-on-secondary-container: #ffdad8;
+  --md-sys-color-tertiary: #95d59a;
+  --md-sys-color-on-tertiary: #00391a;
+  --md-sys-color-tertiary-container: #145226;
+  --md-sys-color-on-tertiary-container: #b0f2b5;
+  --md-sys-color-error: #ffb4ab;
+  --md-sys-color-on-error: #690005;
+  --md-sys-color-error-container: #93000a;
+  --md-sys-color-on-error-container: #ffdad6;
+  --md-sys-color-background: #1a1111;
+  --md-sys-color-on-background: #f1dedd;
+  --md-sys-color-surface: #1a1111;
+  --md-sys-color-on-surface: #f1dedd;
+  --md-sys-color-surface-variant: #534342;
+  --md-sys-color-on-surface-variant: #d8c2c0;
+  --md-sys-color-outline: #a08c8b;
+  --md-sys-color-outline-variant: #534342;
+  --md-sys-color-inverse-surface: #f1dedd;
+  --md-sys-color-inverse-on-surface: #392e2d;
+  --md-sys-color-surface-container-lowest: #140c0c;
+  --md-sys-color-surface-container-low: #231919;
+  --md-sys-color-surface-container: #271d1d;
+  --md-sys-color-surface-container-high: #322828;
+  --md-sys-color-surface-container-highest: #3d3232;
+  --md-sys-color-surface-tint: #ffb3b2;
 }
 
 /* типографские классы M3 */

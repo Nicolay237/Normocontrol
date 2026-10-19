@@ -344,7 +344,8 @@ a:focus-visible, summary:focus-visible, .chip:focus-visible { outline: 2px solid
   border-radius: 20px; border: 1px solid var(--md-sys-color-outline-variant); color: var(--md-sys-color-on-surface);
   white-space: nowrap; overflow: hidden; flex-shrink: 0;
 }
-.gost + .account-btn { margin-left: 8px; }
+.gost + .theme-btn { margin-left: 4px; }
+.theme-btn { flex-shrink: 0; color: var(--md-sys-color-on-surface-variant); }
 .tabs + .gost { margin-left: auto; }
 
 /* ── формы ── */
@@ -461,7 +462,7 @@ textarea.field-input { resize: vertical; min-height: 120px; line-height: 24px; }
 @media (max-width: 600px) {
   .account-btn { width: 40px; padding: 0; justify-content: center; }
   .account-text { display: none; }
-  .gost + .account-btn { margin-left: 0; }
+  .theme-btn { margin-left: -4px; }
   .tabs { margin-left: auto; }
   .auth-card { padding: 24px var(--pad); }
   .user-row { align-items: flex-start; }
