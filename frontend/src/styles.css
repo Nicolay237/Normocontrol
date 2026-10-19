@@ -36,7 +36,7 @@ md-filled-button, md-filled-tonal-button, md-outlined-button, md-text-button {
 .app-bar-inner { display: flex; align-items: center; gap: 16px; height: 64px; }
 .brand { display: flex; align-items: center; gap: 12px; color: var(--md-sys-color-on-surface); white-space: nowrap; }
 .logo { flex-shrink: 0; transition: transform .2s; }
-.brand:hover .logo { transform: rotate(-8deg); }
+.brand:hover .logo { transform: rotate(-6deg) scale(1.04); }
 .brand-mark {
   display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%;
   background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary);

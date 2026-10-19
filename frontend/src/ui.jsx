@@ -48,16 +48,10 @@ const ICONS = {
   search: Search,
 };
 
-/** Логотип: штамп нормоконтроля «НК». Цвета берутся из темы. */
+/** Логотип: страница с полями (пунктир — левое поле) и отметкой «проверено». Цвета — из темы. */
 export const Logo = ({ size = 40 }) => (
   <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true" className="logo">
-    <g transform="rotate(-12 16 16)">
-      <circle cx="16" cy="16" r="14.5" fill="var(--md-sys-color-primary)" />
-      <circle cx="16" cy="16" r="11.6" fill="none" stroke="var(--md-sys-color-on-primary)"
-              strokeWidth="1.2" strokeDasharray="2.2 1.4" />
-      <text x="16" y="20.2" textAnchor="middle" fontFamily="Georgia, 'Times New Roman', serif"
-            fontWeight="700" fontSize="12" fill="var(--md-sys-color-on-primary)">НК</text>
-    </g>
+    <rect width="32" height="32" rx="8" fill="var(--md-sys-color-primary)" /><rect x="8" y="5" width="16" height="22" rx="2" fill="var(--md-sys-color-on-primary)" /><path d="M12 7.5v17" stroke="var(--md-sys-color-primary)" strokeWidth="1.2" strokeDasharray="1.6 1.2" opacity="0.75" /><path d="M14 10.5h7M14 14h7M14 17.5h4.5" stroke="var(--md-sys-color-primary)" strokeWidth="1.6" strokeLinecap="round" opacity="0.55" /><circle cx="23" cy="23" r="6.2" fill="var(--md-sys-color-tertiary)" stroke="var(--md-sys-color-primary)" strokeWidth="1.6" /><path d="M20.3 23.1l1.8 1.8 3.5-3.7" stroke="var(--md-sys-color-on-tertiary)" strokeWidth="1.7" fill="none" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
 

@@ -186,7 +186,7 @@ def build_html_report(report, source_name):
 <meta name="color-scheme" content="light dark">
 <title>Отчёт нормоконтроля — {e(source_name)}</title><style>{_CSS}</style></head>
 <body><div class="wrap">
-<div class="bar"><svg class="stamp" width="36" height="36" viewBox="0 0 32 32" aria-hidden="true"><g transform="rotate(-12 16 16)"><circle cx="16" cy="16" r="14.5" fill="var(--primary)"/><circle cx="16" cy="16" r="11.6" fill="none" stroke="var(--on-primary)" stroke-width="1.2" stroke-dasharray="2.2 1.4"/><text x="16" y="20.2" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-weight="700" font-size="12" fill="var(--on-primary)">НК</text></g></svg>Нормоконтроль<span class="tag">ГОСТ 7.32-2017</span></div>
+<div class="bar"><svg class="logo" width="36" height="36" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="var(--primary)"/><rect x="8" y="5" width="16" height="22" rx="2" fill="var(--on-primary)"/><path d="M12 7.5v17" stroke="var(--primary)" stroke-width="1.2" stroke-dasharray="1.6 1.2" opacity="0.75"/><path d="M14 10.5h7M14 14h7M14 17.5h4.5" stroke="var(--primary)" stroke-width="1.6" stroke-linecap="round" opacity="0.55"/><circle cx="23" cy="23" r="6.2" fill="var(--ok)" stroke="var(--primary)" stroke-width="1.6"/><path d="M20.3 23.1l1.8 1.8 3.5-3.7" stroke="var(--surface)" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>Нормоконтроль<span class="tag">ГОСТ 7.32-2017</span></div>
 <div class="summary">
   <span class="s-icon {kind}">{_svg(kind)}</span>
   <div>
