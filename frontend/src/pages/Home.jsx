@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useProfiles } from "../ProfilesContext.jsx";
 import { Icon } from "../ui.jsx";
@@ -9,6 +10,9 @@ const CARDS = [
 
 export default function Home({ notFound }) {
   const { profiles } = useProfiles();
+  useEffect(() => {
+    document.title = "Нормоконтроль онлайн — проверка оформления ВКР и курсовых по ГОСТ 7.32-2017";
+  }, []);
   return (
     <section className="container page">
       {notFound && <div className="banner banner-error body-medium" role="alert"><Icon name="error" /> Страница не найдена. Выберите тип работы:</div>}
@@ -31,6 +35,10 @@ export default function Home({ notFound }) {
           );
         })}
       </div>
+      <Link to="/gost" className="list-link label-large home-gost">
+        <Icon name="info" size={20} /> Требования ГОСТ 7.32-2017 к оформлению: поля, шрифт, заголовки, подписи
+        <Icon name="forward" size={18} />
+      </Link>
     </section>
   );
 }

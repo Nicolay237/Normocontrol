@@ -6,6 +6,7 @@ import CheckPage from "./pages/CheckPage.jsx";
 import Login from "./pages/Login.jsx";
 import Account from "./pages/Account.jsx";
 import Admin from "./pages/Admin.jsx";
+import Gost from "./pages/Gost.jsx";
 
 function UserButton() {
   const { user } = useSession();
@@ -50,6 +51,7 @@ export default function App() {
           <Route path="/" element={<Home />} />
           <Route path="/vkr" element={<CheckPage profileKey="vkr" />} />
           <Route path="/coursework" element={<CheckPage profileKey="coursework" />} />
+          <Route path="/gost" element={<Gost />} />
           <Route path="/login" element={<Login />} />
           <Route path="/account" element={<Account />} />
           <Route path="/admin" element={<Admin />} />
@@ -58,10 +60,17 @@ export default function App() {
       </main>
 
       <footer className="container">
-        <p className="app-footer body-medium">
-          Нормы приведены по ГОСТ 7.32&#8209;2017. Сервис даёт предварительную оценку —
-          окончательное решение остаётся за нормоконтролем вашей кафедры.
-        </p>
+        <div className="app-footer body-medium">
+          <nav className="footer-links label-large" aria-label="Разделы сайта">
+            <Link to="/vkr">Проверка ВКР</Link>
+            <Link to="/coursework">Проверка курсовой</Link>
+            <Link to="/gost">Требования ГОСТ 7.32-2017</Link>
+          </nav>
+          <p>
+            Нормы приведены по ГОСТ 7.32&#8209;2017. Сервис даёт предварительную оценку —
+            окончательное решение остаётся за нормоконтролем вашей кафедры.
+          </p>
+        </div>
       </footer>
     </ProfilesProvider>
   );

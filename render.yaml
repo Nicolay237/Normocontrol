@@ -20,3 +20,12 @@ services:
       # Без неё учётки хранятся во временном файле и пропадают при каждом деплое.
       - key: DATABASE_URL
         sync: false
+      # Основной адрес сайта. Задавать ПОСЛЕ того, как домен подключён и открывается по https:
+      # с ним www.… и *.onrender.com перенаправляются сюда, а в sitemap/canonical попадает этот адрес.
+      - key: SITE_URL
+        sync: false            # https://normocontrol.site
+      # коды подтверждения из Яндекс Вебмастера и Google Search Console (только значение content="…")
+      - key: YANDEX_VERIFICATION
+        sync: false
+      - key: GOOGLE_VERIFICATION
+        sync: false

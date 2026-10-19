@@ -277,6 +277,29 @@ details[open] > summary .chevron { transform: rotate(180deg); }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .chevron { transition: none; } }
 a:focus-visible, summary:focus-visible, .chip:focus-visible { outline: 2px solid var(--md-sys-color-primary); outline-offset: 2px; }
 
+/* ── текст для поисковиков, видимый до запуска React ── */
+.seo-prerender { max-width: 880px; margin: 0 auto; padding: 32px 16px; line-height: 1.6; }
+.seo-prerender a { color: var(--md-sys-color-primary); text-decoration: underline; }
+
+/* ── статья «Требования ГОСТ» ── */
+.toc { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 8px; }
+.toc .chip { text-decoration: none; }
+.article-section { margin-top: 32px; scroll-margin-top: 80px; }
+.article-section h2 { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+.clause { color: var(--md-sys-color-primary); }
+.article-list { padding-left: 22px; list-style: disc; display: flex; flex-direction: column; gap: 6px; color: var(--md-sys-color-on-surface); }
+.article-list li::marker { color: var(--md-sys-color-primary); }
+.faq summary > span:first-child { flex: 1; }
+.faq-answer { padding: 0 var(--pad) 16px; color: var(--md-sys-color-on-surface-variant); }
+.cta {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  margin-top: 40px; padding: 20px var(--pad); border-radius: var(--shape-lg);
+  background: var(--md-sys-color-surface-container-low); border: 1px solid var(--md-sys-color-outline-variant);
+}
+.home-gost { margin-top: 16px; }
+.footer-links { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px 24px; margin-bottom: 12px; }
+.footer-links a { color: var(--md-sys-color-primary); }
+
 /* ── аккаунт в шапке ── */
 .account-btn {
   position: relative; display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px 0 12px;

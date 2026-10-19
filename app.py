@@ -3,8 +3,10 @@
 """Flask-сервер: JSON API проверки + раздача собранного React-фронтенда."""
 
 import os
+import re
 import json
 import gzip
+import html as html_lib
 import time
 import uuid
 import shutil
@@ -12,7 +14,7 @@ import tempfile
 import threading
 from urllib.parse import quote
 
-from flask import Flask, request, jsonify, Response, send_from_directory, send_file
+from flask import Flask, request, jsonify, Response, send_from_directory, send_file, redirect
 
 from checker import (
     PROFILES, describe_profile, run_normocontrol_cached, build_html_report,
@@ -20,6 +22,7 @@ from checker import (
 from checker.fixers import fix_docx
 from checker.annotate import annotate_docx
 import auth
+import seo
 from auth import can_autofix, current_user, public_user
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -97,6 +100,39 @@ store = FileStore(os.path.join(tempfile.gettempdir(), "normocontrol_store"))
 @app.route("/health")
 def health():
     return {"status": "ok"}
+
+
+# ── основной домен ────────────────────────────────────────────────────────
+
+@app.before_request
+def redirect_to_canonical_host():
+    """
+    Если задан SITE_URL (https://normocontrol.site), заходы на www.… и *.onrender.com
+    постоянно (301) перенаправляются на него — для поисковиков это один сайт, а не три копии.
+    Проверку здоровья Render и API не трогаем.
+    """
+    base = seo.site_url()
+    if not base or request.method not in ("GET", "HEAD") or request.path == "/health" \
+            or request.path.startswith("/api/"):
+        return None
+    host = base.split("://", 1)[1]
+    if request.host != host and not request.host.startswith(("localhost", "127.0.0.1")):
+        return redirect(base + request.full_path.rstrip("?"), code=301)
+    return None
+
+
+def _base_url():
+    return seo.site_url() or request.host_url.rstrip("/")
+
+
+@app.route("/robots.txt")
+def robots():
+    return Response(seo.robots_txt(_base_url()), mimetype="text/plain")
+
+
+@app.route("/sitemap.xml")
+def sitemap():
+    return Response(seo.sitemap_xml(_base_url()), mimetype="application/xml")
 
 
 @app.route("/api/config")
@@ -304,29 +340,40 @@ def spa(path):
     full = os.path.join(DIST_DIR, path)
     if path and os.path.isfile(full) and path != "index.html":
         return send_from_directory(DIST_DIR, path)
-    return Response(_index_html(), mimetype="text/html")  # клиентский роутинг (/vkr, /coursework)
+    html, status = _index_html("/" + path)
+    return Response(html, status=status, mimetype="text/html")  # клиентский роутинг (/vkr, /coursework…)
 
 
 _INDEX = {}   # mtime index.html → (до вставки, после вставки)
 
 
-def _index_html():
+def _index_html(path="/"):
     """
-    index.html со встроенными профилями, конфигом и текущим пользователем (window.__BOOT__):
-    страница рисуется сразу, без дополнительных запросов к API — на мобильном интернете это
-    заметно ускоряет первый показ. Шаблон кешируется, данные о пользователе — на каждый запрос.
+    index.html для пути path: SEO-теги и готовый текст страницы (seo.py), а также профили,
+    конфиг и текущий пользователь (window.__BOOT__) — страница рисуется сразу, без
+    дополнительных запросов к API. Шаблон кешируется, данные о пользователе — на каждый запрос.
+    Возвращает (html, http-статус).
     """
-    path = os.path.join(DIST_DIR, "index.html")
-    mtime = os.path.getmtime(path)
+    index_path = os.path.join(DIST_DIR, "index.html")
+    mtime = os.path.getmtime(index_path)
     if _INDEX.get("mtime") != mtime:
-        with open(path, encoding="utf-8") as fh:
+        with open(index_path, encoding="utf-8") as fh:
             head, _, tail = fh.read().partition("</head>")
         _INDEX.update(mtime=mtime, head=head, tail=tail,
                       profiles=[describe_profile(p) for p in PROFILES.values()])
     boot = {"profiles": _INDEX["profiles"], "config": _client_config()}
     # "</" экранируем, чтобы строка в JSON не закрыла тег <script>
     payload = json.dumps(boot, ensure_ascii=False).replace("</", "<\\/")
-    return f"{_INDEX['head']}<script>window.__BOOT__={payload}</script>\n</head>{_INDEX['tail']}"
+    page = seo.head_and_body(path, _base_url())
+    head, tail = _INDEX["head"], _INDEX["tail"]
+    if page["title"]:
+        head = re.sub(r"<title>.*?</title>", f"<title>{html_lib.escape(page['title'])}</title>", head, count=1, flags=re.S)
+        head = re.sub(r'<meta name="description" content="[^"]*">',
+                      f'<meta name="description" content="{html_lib.escape(page["description"])}">', head, count=1)
+    if page["body"]:
+        tail = tail.replace('<div id="root"></div>', f'<div id="root">{page["body"]}</div>', 1)
+    html = f"{head}{page['head']}<script>window.__BOOT__={payload}</script>\n</head>{tail}"
+    return html, page["status"]
 
 
 if __name__ == "__main__":

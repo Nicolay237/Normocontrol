@@ -46,6 +46,19 @@ Postgres (бесплатный тариф Render удаляет базу чер�
 входа и кеш проверок живут в памяти процесса. Загруженные и исправленные файлы хранятся час во
 временной папке. Тариф free засыпает после 15 минут простоя (первый запрос после этого ~1 минута).
 
+### Домен и поисковики
+
+| Переменная | Зачем |
+|---|---|
+| `SITE_URL` | Основной адрес, например `https://normocontrol.site`. Задаётся **после** подключения домена: включает 301-перенаправление с `www.` и `*.onrender.com`, попадает в `canonical` и `sitemap.xml`. |
+| `YANDEX_VERIFICATION`, `GOOGLE_VERIFICATION` | Коды подтверждения прав из Яндекс Вебмастера и Google Search Console (значение `content` мета-тега). |
+
+SEO (`seo.py`): у `/`, `/vkr`, `/coursework`, `/gost` свои `<title>`, описание, canonical, Open Graph
+(картинка `frontend/public/og.png`), schema.org; текст страницы отдаётся готовым HTML внутри
+`#root`, чтобы его видел робот Яндекса без JavaScript. `/robots.txt` закрывает служебные разделы,
+`/sitemap.xml` перечисляет публичные страницы. Статья «Требования ГОСТ» — `content/gost.json`
+(её читают и сервер, и React).
+
 ## Docker
 
 ```bash
@@ -108,6 +121,8 @@ checker/docx_utils.py   вычисление фактического форма
 checker/pdf_checks.py   проверки .pdf (по координатам, оценочно)
 checker/fixers.py       автоисправление .docx
 checker/annotate.py     копия работы с подсветкой и примечаниями Word
+seo.py                  SEO: мета-теги, готовый HTML страниц, robots.txt, sitemap.xml
+content/gost.json       статья «Требования ГОСТ 7.32-2017» (общая для сервера и фронтенда)
 auth.py                 учётные записи: вход, сессии, админка (/api/login, /api/admin/...)
 checker/typography.py   пробелы, пустые строки
 checker/report.py       модель отчёта, HTML для скачивания
