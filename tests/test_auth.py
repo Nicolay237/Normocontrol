@@ -156,3 +156,32 @@ def test_database_url_normalized_for_psycopg(monkeypatch):
     for raw in ("postgres://u:p@host/db", "postgresql://u:p@host/db"):
         monkeypatch.setenv("DATABASE_URL", raw)
         assert auth._db_url(".") == "postgresql+psycopg://u:p@host/db"
+
+
+def test_migrate_users_between_databases(tmp_path):
+    from sqlalchemy import create_engine, insert, select
+    from auth import users, metadata
+    from scripts.migrate_users import migrate
+    from datetime import datetime, timezone
+    src = "sqlite:///" + str(tmp_path / "old.db").replace("\\", "/")
+    dst = "sqlite:///" + str(tmp_path / "new.db").replace("\\", "/")
+    now = datetime.now(timezone.utc)
+    eng = create_engine(src)
+    metadata.create_all(eng)
+    with eng.begin() as c:
+        for login, role in (("admin", "admin"), ("ivanov.ii", "user")):
+            c.execute(insert(users).values(login=login, name=login, password_hash="h-" + login, role=role,
+                                           active=True, must_change_password=False, session_version=3,
+                                           created_at=now))
+    new = create_engine(dst)
+    metadata.create_all(new)
+    with new.begin() as c:   # админ, созданный из ADMIN_LOGIN на новом хостинге
+        c.execute(insert(users).values(login="admin", name="Администратор", password_hash="other", role="admin",
+                                       active=True, must_change_password=False, session_version=1, created_at=now))
+    assert migrate(src, dst, log=lambda *_: None) == (1, 1)
+    assert migrate(src, dst, log=lambda *_: None) == (0, 2)          # повторный запуск без дублей
+    with new.connect() as c:
+        rows = {r["login"]: r for r in c.execute(select(users)).mappings()}
+    assert set(rows) == {"admin", "ivanov.ii"}
+    assert rows["admin"]["password_hash"] == "h-admin"                # пароль из старой базы
+    assert rows["ivanov.ii"]["session_version"] == 3

@@ -71,9 +71,11 @@ def init_app(app, base_dir):
     url = _db_url(base_dir)
     engine = create_engine(url, pool_pre_ping=True, future=True)
     metadata.create_all(engine)
-    DB_IS_EPHEMERAL = url.startswith("sqlite") and bool(os.environ.get("RENDER"))
+    # продакшен — любой хостинг, где задан основной адрес сайта (Timeweb, Render…)
+    production = bool(os.environ.get("SITE_URL") or os.environ.get("RENDER") or os.environ.get("FORCE_HTTPS"))
+    DB_IS_EPHEMERAL = url.startswith("sqlite") and production
     if DB_IS_EPHEMERAL:
-        log.warning("DATABASE_URL не задан: учётки хранятся в SQLite и пропадут при следующем деплое на Render")
+        log.warning("DATABASE_URL не задан: учётки хранятся в SQLite внутри контейнера и пропадут при следующем деплое")
 
     secret = os.environ.get("SECRET_KEY")
     if not secret:
@@ -83,7 +85,9 @@ def init_app(app, base_dir):
     app.config.update(
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
-        SESSION_COOKIE_SECURE=bool(os.environ.get("RENDER") or os.environ.get("FORCE_HTTPS")),
+        # cookie только по HTTPS, когда сайт работает на своём домене с SSL
+        SESSION_COOKIE_SECURE=bool(os.environ.get("SITE_URL", "").startswith("https://")
+                                   or os.environ.get("RENDER") or os.environ.get("FORCE_HTTPS")),
         PERMANENT_SESSION_LIFETIME=60 * 60 * 24 * 30,
     )
     _bootstrap_admin()

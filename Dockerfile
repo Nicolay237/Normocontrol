@@ -15,6 +15,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY app.py auth.py seo.py normocontrol.py ./
 COPY checker ./checker
+COPY scripts ./scripts
 COPY content ./content
 COPY --from=frontend /build/frontend/dist ./frontend/dist
 

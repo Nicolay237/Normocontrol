@@ -148,7 +148,7 @@ export default function Admin() {
       {list.ephemeral && (
         <div className="banner banner-error body-medium" role="alert">
           <Icon name="error" />
-          <span>База данных не подключена: учётные записи пропадут при следующем деплое. Задайте DATABASE_URL в настройках Render.</span>
+          <span>База данных не подключена: учётные записи пропадут при следующем деплое. Задайте DATABASE_URL в переменных приложения на хостинге.</span>
         </div>
       )}
 
