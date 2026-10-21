@@ -23,25 +23,42 @@ gunicorn app:app --bind 0.0.0.0:8080 --workers 1 --threads 8 --timeout 120
 
 Flask раздаёт собранный фронтенд из `frontend/dist`.
 
-## Деплой на Timeweb Cloud (основной)
+## Деплой на VPS (основной)
 
-Сервера Timeweb в России, поэтому сайт открывается у всех провайдеров без VPN, а учётные записи
-хранятся на территории РФ (152-ФЗ).
+Российский VPS: сайт открывается у всех провайдеров без VPN, учётные записи хранятся в РФ
+(152-ФЗ). Хватает 1 vCPU / 1–2 ГБ RAM / 15 ГБ диска, Ubuntu 22.04 или 24.04.
+`docker-compose.yml` поднимает три контейнера: приложение, PostgreSQL (данные в томе `pgdata`)
+и Caddy, который сам выпускает и продлевает HTTPS-сертификат.
 
-1. **Apps → Создать → Dockerfile**, подключить GitHub-репозиторий, ветка `master`, автодеплой
-   включён. Порт берётся из `EXPOSE 8080`, путь проверки состояния — `/health`.
-2. **Базы данных → PostgreSQL** в том же регионе; строку подключения — в `DATABASE_URL`.
-   Остальные переменные — из таблиц ниже (`SECRET_KEY`, `ADMIN_LOGIN`, `ADMIN_PASSWORD`, коды
-   вебмастеров). `SITE_URL` задаётся **последним**, когда домен уже открывается по HTTPS.
-3. Перенос учёток со старой базы (Neon) — в консоли контейнера приложения:
+```bash
+# 1. Docker и swap (сборка фронтенда на 1 ГБ RAM без swap может не уместиться)
+curl -fsSL https://get.docker.com | sh
+fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+echo '/swapfile none swap sw 0 0' >> /etc/fstab
 
-   ```bash
-   SOURCE_DATABASE_URL="postgresql://…старая база…" python scripts/migrate_users.py
-   ```
+# 2. Код и настройки
+git clone https://github.com/Nicolay237/Normocontrol.git /opt/normocontrol
+cd /opt/normocontrol
+cp .env.example .env && nano .env
 
-   Пароли сохраняются; повторный запуск дублей не создаёт.
-4. **Домены → Добавить домен** в настройках приложения, у регистратора — A-запись на IP из
-   подсказки панели. Сертификат Let's Encrypt выпускается автоматически.
+# 3. Запуск и проверка
+docker compose up -d --build
+curl http://127.0.0.1:8080/health
+```
+
+Перенос учёток со старой базы (Neon) — пароли сохраняются, повторный запуск дублей не создаёт:
+
+```bash
+docker compose exec -e SOURCE_DATABASE_URL="postgresql://…старая база…" app python scripts/migrate_users.py
+```
+
+Домен: у регистратора A-записи `@` и `www` на IP сервера. Как только DNS обновится, Caddy получит
+сертификат, `www.` перенаправляется на основной домен.
+
+- обновление до последней версии из GitHub — `./deploy/update.sh`;
+- резервная копия базы — `./deploy/backup.sh` (в `backups/`, хранится 14 дней), в cron:
+  `0 4 * * * /opt/normocontrol/deploy/backup.sh`;
+- логи — `docker compose logs -f app`.
 
 ## Деплой на Render
 

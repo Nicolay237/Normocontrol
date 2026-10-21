@@ -1,0 +1,56 @@
+# Запуск на своём VPS: приложение + PostgreSQL + Caddy (HTTPS от Let's Encrypt автоматически).
+#   cp .env.example .env && nano .env
+#   docker compose up -d --build
+# Подробно — раздел «Деплой на VPS» в README.
+
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://normocontrol:${POSTGRES_PASSWORD}@db:5432/normocontrol
+      SITE_URL: https://${DOMAIN}
+      BEHIND_PROXY: "1"
+    depends_on:
+      db:
+        condition: service_healthy
+    # только для проверки с самого сервера: curl http://127.0.0.1:8080/health
+    ports:
+      - "127.0.0.1:8080:8080"
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: normocontrol
+      POSTGRES_DB: normocontrol
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U normocontrol -d normocontrol"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

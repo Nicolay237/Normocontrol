@@ -32,6 +32,11 @@ app = Flask(__name__, static_folder=None)
 app.json.ensure_ascii = False
 app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024  # 20 МБ на файл
 
+if os.environ.get("BEHIND_PROXY"):
+    # за Caddy на VPS: настоящие IP клиента, https и домен — из заголовков X-Forwarded-*
+    from werkzeug.middleware.proxy_fix import ProxyFix
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
 ALLOWED_EXT = {".docx", ".pdf"}
 
 # Учётки университета: вход по логину/паролю от администратора (см. auth.py).
@@ -107,7 +112,7 @@ def health():
 @app.before_request
 def redirect_to_canonical_host():
     """
-    Если задан SITE_URL (https://normocontrol.site), заходы на www.… и *.onrender.com
+    Если задан SITE_URL (https://normocontrol.site), заходы на www.…, IP сервера и технические адреса хостинга
     постоянно (301) перенаправляются на него — для поисковиков это один сайт, а не три копии.
     Проверку здоровья Render и API не трогаем.
     """
