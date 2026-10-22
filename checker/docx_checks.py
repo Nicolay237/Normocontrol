@@ -274,6 +274,7 @@ class DocxChecker:
                 continue
             it["role"] = "body"
         self.mark_code(items)
+        self.mark_appendix_titles(items)
         mark_front_matter(items)
         return items
 
@@ -430,6 +431,7 @@ class DocxChecker:
             self.check_page_numbers()
             self.check_body(items)
             self.check_headings(items)
+            self.check_appendix_titles(items)
             self.check_toc(items)
             self.check_captions(items)
             self.check_code(items)
@@ -662,6 +664,35 @@ class DocxChecker:
                 "center": "по центру", "justify": "по ширине"}.get(a, a)
 
     # ── заголовки ────────────────────────────────────────────────────────
+
+    def mark_appendix_titles(self, items):
+        """
+        Под «ПРИЛОЖЕНИЕ А» — заголовок приложения: по центру, с прописной, полужирным, без точки
+        (ГОСТ 7.32-2017, раздел 6.17). Это не абзац основного текста — роль "appendix_title".
+        """
+        for k, it in enumerate(items):
+            if it["role"] != "structural" or not self.text(it["obj"]).strip().upper().startswith("ПРИЛОЖЕНИ"):
+                continue
+            j = k + 1
+            while j < len(items) and items[j]["role"] == "empty":
+                j += 1
+            if j < len(items) and items[j]["role"] == "body" and len(self.text(items[j]["obj"]).strip()) < 200:
+                items[j]["role"] = "appendix_title"
+
+    def check_appendix_titles(self, items):
+        res = self.res
+        for it in items:
+            if it["role"] != "appendix_title":
+                continue
+            p = it["obj"]
+            text = self.text(p).strip()
+            loc = self._loc(p, "заголовок приложения")
+            if res.alignment(p) != "center":
+                self.report.add(loc, "Оформление заголовка", "заголовок приложения располагается по центру")
+            if ends_with_sentence_dot(text):
+                self.report.add(loc, "Оформление заголовка", "в конце заголовка не должно быть точки")
+            if text[:1].islower():
+                self.report.add(loc, "Оформление заголовка", "заголовок приложения пишется с прописной буквы")
 
     def check_headings(self, items):
         n, res = self.n, self.res

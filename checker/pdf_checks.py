@@ -49,6 +49,27 @@ def _family(fontname):
     return name
 
 
+MONO_HINTS = ("courier", "consolas", "mono", "menlo", "monaco")
+BIB_HEADINGS = ("СПИСОК ИСПОЛЬЗОВАННЫХ", "СПИСОК ЛИТЕРАТУРЫ", "СПИСОК ИСТОЧНИКОВ", "СПИСОК ИСПОЛЬЗОВАННОЙ",
+                "БИБЛИОГРАФИЧЕСКИЙ СПИСОК")
+
+
+def _heading_key(text):
+    return re.sub(r"^\d+(?:\.\d+)*\.?\s+", "", (text or "").strip()).rstrip(".:").upper()
+
+
+def _front_pages(pdf):
+    """
+    Титульный лист и задание — страницы до первого структурного элемента (СОДЕРЖАНИЕ, ВВЕДЕНИЕ…),
+    если он нашёлся на первых шести страницах. Они оформляются по своим формам и не измеряются.
+    """
+    for i, page in enumerate(pdf.pages[:6], start=1):
+        for line in (page.extract_text() or "").splitlines():
+            if _heading_key(line) in STRUCTURAL_HEADINGS:
+                return set(range(1, i))
+    return set()
+
+
 def _is_tnr(fontname):
     n = (fontname or "").lower().replace(" ", "").replace("-", "")
     return "timesnewroman" in n or n.startswith("times") or "liberationserif" in n
@@ -77,12 +98,19 @@ def check_pdf(path, report, n):
             report.add("Документ", "Общее", "в PDF не найдено ни одной страницы")
             return
         n_pages = len(pdf.pages)
+        front = _front_pages(pdf)
+        if front:
+            report.note("Титульный лист и задание оформляются по своим формам — в PDF они не проверялись."
+                        if len(front) > 1 else
+                        "Титульный лист оформляется по своей форме — в PDF он не проверялся.")
         sizes_seen = Counter()
         page_dims = None
 
         for p_idx, page in enumerate(pdf.pages, start=1):
             page_w, page_h = page.width, page.height
             page_dims = page_dims or (page_w, page_h)
+            if p_idx in front:
+                continue
             words = page.extract_words(extra_attrs=["fontname", "size"])
             if not words:
                 report.note(f"Страница {p_idx}: текстового слоя нет (возможно, скан) — пропущена.")
@@ -98,6 +126,9 @@ def check_pdf(path, report, n):
                     "text": " ".join(w["text"] for w in lw),
                     "size": round(statistics.median(sizes), 1) if sizes else None,
                     "words": lw,
+                    # строка листинга (моноширинный шрифт) — в измерениях основного текста не участвует
+                    "code": sum(any(h in (w.get("fontname") or "").lower() for h in MONO_HINTS) for w in lw)
+                            > len(lw) / 2,
                 })
 
             # номер страницы — одиночное число у края; в измерениях не участвует
@@ -107,7 +138,7 @@ def check_pdf(path, report, n):
                 edge = l["top"] < 2.0 * CM_TO_PT or l["bottom"] > page_h - 1.9 * CM_TO_PT
                 if is_num and edge:
                     page_numbers[p_idx] = ((l["x0"] + l["x1"]) / 2, l["top"] < page_h / 2)
-                else:
+                elif not l["code"]:
                     body.append(l)
             if not body:
                 continue
@@ -126,7 +157,11 @@ def check_pdf(path, report, n):
                 margin_hits["bottom"].append((p_idx, round(bot_m, 2)))
             # левое/правое — по «телу» текста, но только на плотных страницах
             if len(body) >= 12:
-                left_m = Counter(round(l["x0"]) for l in body).most_common(1)[0][0] * PT_TO_CM
+                # левый край текста — самый левый из частых x0 (а не самый частый: на странице
+                # с короткими абзацами строк с красной строкой может быть больше, чем без неё)
+                xs0 = Counter(round(l["x0"]) for l in body)
+                frequent = [x for x, c in xs0.items() if c >= max(3, 0.15 * len(body))]
+                left_m = (min(frequent) if frequent else xs0.most_common(1)[0][0]) * PT_TO_CM
                 x1s = sorted(l["x1"] for l in body)
                 mode_x1, cnt = Counter(round(l["x1"]) for l in body).most_common(1)[0]
                 justified = cnt >= 0.25 * len(body)
@@ -274,6 +309,12 @@ def check_pdf(path, report, n):
                     report.add("Структура работы", "Структура",
                                f"не найден структурный элемент «{title}»")
 
-        page_texts = [(f"Страница {p}, строка «{l['text'][:50]}»", l["text"])
-                      for p, (body, _, _) in all_lines_by_page.items() for l in body]
+        # строки списка источников: « : », « / », « ; » в них по ГОСТ Р 7.0.100 — с пробелами
+        page_texts, in_bib = [], False
+        for p, (body, _, _) in all_lines_by_page.items():
+            for l in body:
+                key = _heading_key(l["text"])
+                if key in STRUCTURAL_HEADINGS or key.startswith("ПРИЛОЖЕНИЕ"):
+                    in_bib = key.startswith(BIB_HEADINGS)
+                page_texts.append((f"Страница {p}, строка «{l['text'][:50]}»", l["text"], "bib" if in_bib else None))
     check_typography(page_texts, report)
