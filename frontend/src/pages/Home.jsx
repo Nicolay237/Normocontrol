@@ -17,8 +17,8 @@ export function Pricing() {
   const user = config.user;
   const [soon, setSoon] = useState(false);
   const price = config.autofix_price ?? 99;
-  const subPrice = config.subscription_price ?? 249;
-  const subLimit = config.subscription_limit ?? 100;
+  const subPrice = config.subscription_price ?? 299;
+  const subLimit = config.subscription_limit ?? 30;
   return (
     <section className="pricing" aria-labelledby="pricing-title">
       <h2 id="pricing-title" className="headline-small">Тарифы</h2>

@@ -173,4 +173,4 @@ def test_free_access_does_not_spend_subscription(monkeypatch):
 
 def test_config_has_subscription_price():
     cfg = client().get("/api/config").get_json()
-    assert cfg["subscription_price"] == 249 and cfg["subscription_limit"] == 100
+    assert cfg["subscription_price"] == 299 and cfg["subscription_limit"] == 30

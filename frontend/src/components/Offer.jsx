@@ -72,9 +72,9 @@ export default function Offer({ total, fixable }) {
 
       <div className="offer-sub">
         <div>
-          <span className="title-medium">Подписка — {config.subscription_price ?? 249}&nbsp;₽ в месяц</span>
+          <span className="title-medium">Подписка — {config.subscription_price ?? 299}&nbsp;₽ в месяц</span>
           <p className="body-medium muted">
-            {config.subscription_limit ?? 100} автоисправлений в месяц: исправляйте работу после каждой правки
+            {config.subscription_limit ?? 30} автоисправлений в месяц: исправляйте работу после каждой правки
             руководителя.
           </p>
         </div>

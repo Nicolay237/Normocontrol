@@ -70,8 +70,8 @@ autofix_log = Table(
     Column("created_at", DateTime(timezone=True), nullable=False),
 )
 
-SUBSCRIPTION_PRICE = int(os.environ.get("SUBSCRIPTION_PRICE", "249"))
-SUBSCRIPTION_LIMIT = int(os.environ.get("SUBSCRIPTION_LIMIT", "100"))
+SUBSCRIPTION_PRICE = int(os.environ.get("SUBSCRIPTION_PRICE", "299"))
+SUBSCRIPTION_LIMIT = int(os.environ.get("SUBSCRIPTION_LIMIT", "30"))
 
 # дополнительные проверки: кому какой пакет назначен и настройки пакетов (JSON поверх значений из кода)
 user_packs = Table(
