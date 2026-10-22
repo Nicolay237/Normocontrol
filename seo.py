@@ -157,7 +157,7 @@ PAGES = {
 }
 
 # служебные страницы: доступны, но не индексируются
-NOINDEX = {"/login", "/register", "/account", "/admin"}
+NOINDEX = {"/login", "/register", "/verify", "/forgot", "/account", "/admin"}
 
 
 # ── вставка в index.html ──────────────────────────────────────────────────
@@ -225,6 +225,8 @@ def robots_txt(base):
         "Disallow: /account\n"
         "Disallow: /login\n"
         "Disallow: /register\n"
+        "Disallow: /verify\n"
+        "Disallow: /forgot\n"
         f"\nSitemap: {base}/sitemap.xml\n"
     )
 

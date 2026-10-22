@@ -19,7 +19,9 @@ export default function Login({ mode = "login" }) {
     document.title = (isRegister ? "Регистрация" : "Вход") + " — Нормоконтроль";
     setState({ busy: false, error: null });
   }, [isRegister]);
-  if (user && !state.busy) return <Navigate to={user.must_change_password ? "/account" : back} replace />;
+  if (user && !state.busy)
+    return <Navigate to={user.must_change_password ? "/account" : user.email_verified === false ? "/verify" : back}
+                     replace state={{ from: back }} />;
 
   async function submit(e) {
     e.preventDefault();
@@ -29,7 +31,8 @@ export default function Login({ mode = "login" }) {
         ? await register(form.login, form.password, form.name, form.consent)
         : await login(form.login, form.password);
       setSession(res);
-      navigate(res.user.must_change_password ? "/account" : back, { replace: true, state: { from: back } });
+      const next = res.user.must_change_password ? "/account" : res.user.email_verified === false ? "/verify" : back;
+      navigate(next, { replace: true, state: { from: back, mailSent: res.mail_sent } });
     } catch (err) {
       setState({ busy: false, error: err.message });
     }
@@ -92,7 +95,8 @@ export default function Login({ mode = "login" }) {
         <p className="body-medium muted small-note">
           {isRegister
             ? <>Уже есть аккаунт? <Link to="/login" state={location.state}>Войти</Link></>
-            : <>Нет аккаунта? <Link to="/register" state={location.state}>Зарегистрируйтесь</Link> — это минута.</>}
+            : <>Нет аккаунта? <Link to="/register" state={location.state}>Зарегистрируйтесь</Link> — это минута.
+                <br /><Link to="/forgot">Забыли пароль?</Link></>}
         </p>
       </div>
     </section>

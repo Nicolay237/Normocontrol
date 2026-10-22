@@ -34,6 +34,7 @@ from sqlalchemy import (
 from werkzeug.security import generate_password_hash, check_password_hash
 
 from checker.packs import PACKS, settings_for
+import mailer
 
 log = logging.getLogger("normocontrol.auth")
 bp = Blueprint("auth", __name__)
@@ -62,7 +63,21 @@ users = Table(
     Column("consent_at", DateTime(timezone=True), nullable=True),
     # подписка действует до этого момента (None — нет подписки)
     Column("subscription_until", DateTime(timezone=True), nullable=True),
+    # почта подтверждена кодом из письма (учётки от администратора и старые — считаются подтверждёнными)
+    Column("email_verified", Boolean, nullable=False, default=True),
 )
+
+# коды из писем: подтверждение почты (verify) и сброс пароля (reset); храним только хеш
+email_codes = Table(
+    "email_codes", metadata,
+    Column("user_id", Integer, primary_key=True),
+    Column("purpose", String(16), primary_key=True),
+    Column("code_hash", String(256), nullable=False),
+    Column("expires_at", DateTime(timezone=True), nullable=False),
+    Column("attempts", Integer, nullable=False, default=0),
+)
+CODE_TTL = timedelta(minutes=30)
+CODE_ATTEMPTS = 5
 
 # автоисправления по подписке — для лимита в месяц
 autofix_log = Table(
@@ -95,6 +110,7 @@ _ADDED_COLUMNS = {
     "registered": "BOOLEAN NOT NULL DEFAULT FALSE",
     "subscription_until": "{timestamp} NULL",
     "consent_at": "{timestamp} NULL",
+    "email_verified": "BOOLEAN NOT NULL DEFAULT TRUE",
 }
 
 engine = None
@@ -197,7 +213,7 @@ def public_user(u):
         return None
     return {"id": u["id"], "login": u["login"], "name": u["name"], "role": u["role"],
             "must_change_password": u["must_change_password"], "free_autofix": has_free_access(u),
-            "subscription": subscription_state(u),
+            "subscription": subscription_state(u), "email_verified": bool(u["email_verified"]),
             "packs": [{"key": k, "short": PACKS[k].short, "title": PACKS[k].title,
                        "profiles": list(PACKS[k].profiles)} for k in assigned_packs(u["id"])]}
 
@@ -252,12 +268,14 @@ def autofix_access(u):
     """
     Чем оплачено автоисправление: ("free", None) — бесплатный доступ, ("subscription", None) —
     подписка с остатком лимита, (None, код) — недоступно: login_required, password_change_required,
-    limit_reached, payment_required.
+    email_unverified, limit_reached, payment_required.
     """
     if not u:
         return None, "login_required"
     if u["must_change_password"]:
         return None, "password_change_required"
+    if not u["email_verified"]:
+        return None, "email_unverified"
     if has_free_access(u):
         return "free", None
     sub = subscription_state(u)
@@ -422,11 +440,16 @@ def register():
             login=email, name=name or email.split("@")[0], password_hash=generate_password_hash(password),
             role="user", active=True, must_change_password=False, session_version=1, created_at=_now(),
             last_login_at=_now(), free_autofix=False, registered=True, consent_at=_now(),
+            # пока почта не настроена, подтверждать нечем — аккаунт работает сразу
+            email_verified=not mailer.enabled(),
         ))
         row = c.execute(select(users).where(users.c.login == email)).mappings().first()
     _fail(key)   # счётчик регистраций с этого IP
     _start_session(row)
-    return jsonify(user=public_user(row), autofix_enabled=can_autofix()), 201
+    mail_sent = None
+    if not row["email_verified"]:
+        mail_sent = _send_code(row, "verify")
+    return jsonify(user=public_user(row), autofix_enabled=can_autofix(), mail_sent=mail_sent), 201
 
 
 @bp.post("/api/login")
@@ -687,3 +710,120 @@ def admin_pack_settings(key):
             c.execute(insert(check_packs).values(key=key, settings=_json.dumps(diff, ensure_ascii=False),
                                                  updated_at=_now()))
         return jsonify(pack=_pack_row(c, key))
+
+# ── почта: подтверждение и сброс пароля ───────────────────────────────────
+
+def _issue_code(uid, purpose):
+    code = f"{secrets.randbelow(10 ** 6):06d}"
+    with engine.begin() as c:
+        c.execute(delete(email_codes).where(email_codes.c.user_id == uid, email_codes.c.purpose == purpose))
+        c.execute(insert(email_codes).values(user_id=uid, purpose=purpose, code_hash=generate_password_hash(code),
+                                             expires_at=_now() + CODE_TTL, attempts=0))
+    return code
+
+
+def _check_code(uid, purpose, code):
+    """Код верный и не истёк — запись удаляется; неверный — счётчик попыток (после 5 код сгорает)."""
+    code = re.sub(r"\D", "", code or "")
+    with engine.begin() as c:
+        row = c.execute(select(email_codes).where(email_codes.c.user_id == uid,
+                                                  email_codes.c.purpose == purpose)).mappings().first()
+        if not row or _aware(row["expires_at"]) < _now() or row["attempts"] >= CODE_ATTEMPTS:
+            return "expired"
+        if not check_password_hash(row["code_hash"], code):
+            c.execute(update(email_codes).where(email_codes.c.user_id == uid, email_codes.c.purpose == purpose)
+                      .values(attempts=row["attempts"] + 1))
+            return "wrong"
+        c.execute(delete(email_codes).where(email_codes.c.user_id == uid, email_codes.c.purpose == purpose))
+    return "ok"
+
+
+def _send_code(row, purpose):
+    """Новый код на почту пользователя. True — письмо ушло, False — почтовый сервис не ответил."""
+    site = (os.environ.get("SITE_URL") or "https://normocontrol.site").rstrip("/")
+    subject, text = mailer.code_letter(purpose, _issue_code(row["id"], purpose), site)
+    try:
+        mailer.send(row["login"], subject, text)
+        return True
+    except Exception:
+        log.exception("не удалось отправить письмо (%s)", purpose)
+        return False
+
+
+MAIL_WINDOW, MAIL_LIMIT = 60 * 60, 5   # писем одному адресу в час
+
+
+@bp.post("/api/email/resend")
+@login_required
+def email_resend():
+    u = current_user()
+    if u["email_verified"]:
+        return jsonify(user=public_user(u), autofix_enabled=can_autofix())
+    key = f"mail:{u['id']}"
+    if _too_many(key, MAIL_WINDOW, MAIL_LIMIT):
+        return jsonify(error="Слишком много писем подряд. Попробуйте через час."), 429
+    _fail(key)
+    if not _send_code(u, "verify"):
+        return jsonify(error="Не удалось отправить письмо. Попробуйте ещё раз через несколько минут."), 502
+    return jsonify(ok=True)
+
+
+@bp.post("/api/email/verify")
+@login_required
+def email_verify():
+    u = current_user()
+    if not u["email_verified"]:
+        res = _check_code(u["id"], "verify", (request.get_json(silent=True) or {}).get("code"))
+        if res == "wrong":
+            return jsonify(error="Неверный код. Проверьте письмо и попробуйте ещё раз."), 400
+        if res == "expired":
+            return jsonify(error="Код устарел или введён неверно слишком много раз — запросите новый.",
+                           code="code_expired"), 400
+        with engine.begin() as c:
+            c.execute(update(users).where(users.c.id == u["id"]).values(email_verified=True))
+        u["email_verified"] = True
+    return jsonify(user=public_user(u), autofix_enabled=can_autofix())
+
+
+@bp.post("/api/password/forgot")
+def password_forgot():
+    """Код для сброса пароля. Ответ одинаковый, есть такой email или нет — чтобы не выдавать базу."""
+    if not mailer.enabled():
+        return jsonify(error="Восстановление пароля по почте пока недоступно. Напишите администратору."), 503
+    email = normalize_login((request.get_json(silent=True) or {}).get("email"))
+    keys = (f"forgot-ip:{_client_ip()}", f"forgot:{email}")
+    if not EMAIL_RE.match(email):
+        return jsonify(error="Укажите email, с которым вы регистрировались."), 400
+    if _too_many(keys[0], MAIL_WINDOW, 10) or _too_many(keys[1], MAIL_WINDOW, 3):
+        return jsonify(error="Слишком много запросов. Попробуйте через час."), 429
+    for k in keys:
+        _fail(k)
+    with engine.connect() as c:
+        row = c.execute(select(users).where(users.c.login == email)).mappings().first()
+    if row and row["active"]:
+        _send_code(row, "reset")
+    return jsonify(ok=True)
+
+
+@bp.post("/api/password/reset")
+def password_reset():
+    data = request.get_json(silent=True) or {}
+    email = normalize_login(data.get("email"))
+    err = _validate_new_password(data.get("password") or "")
+    if err:
+        return jsonify(error=err), 400
+    with engine.connect() as c:
+        row = c.execute(select(users).where(users.c.login == email)).mappings().first()
+    res = _check_code(row["id"], "reset", data.get("code")) if row and row["active"] else "expired"
+    if res == "wrong":
+        return jsonify(error="Неверный код. Проверьте письмо и попробуйте ещё раз."), 400
+    if res == "expired":
+        return jsonify(error="Код устарел или неверен — запросите новый.", code="code_expired"), 400
+    ver = row["session_version"] + 1   # остальные устройства выходят из аккаунта
+    with engine.begin() as c:
+        c.execute(update(users).where(users.c.id == row["id"]).values(
+            password_hash=generate_password_hash(data["password"]), must_change_password=False,
+            session_version=ver, email_verified=True, last_login_at=_now()))
+        row = c.execute(select(users).where(users.c.id == row["id"])).mappings().first()
+    _start_session(row)
+    return jsonify(user=public_user(row), autofix_enabled=can_autofix())

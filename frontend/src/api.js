@@ -23,6 +23,11 @@ export function api(url, { method = "GET", body } = {}) {
 export const login = (login, password) => api("/api/login", { method: "POST", body: { login, password } });
 export const register = (email, password, name, consent) =>
   api("/api/register", { method: "POST", body: { email, password, name, consent } });
+export const verifyEmail = (code) => api("/api/email/verify", { method: "POST", body: { code } });
+export const resendCode = () => api("/api/email/resend", { method: "POST", body: {} });
+export const forgotPassword = (email) => api("/api/password/forgot", { method: "POST", body: { email } });
+export const resetPassword = (email, code, password) =>
+  api("/api/password/reset", { method: "POST", body: { email, code, password } });
 export const fetchLegal = (key) => fetch(`/api/legal/${key}`).then(parse);
 export const logout = () => api("/api/logout", { method: "POST", body: {} });
 export const changePassword = (current, next) =>

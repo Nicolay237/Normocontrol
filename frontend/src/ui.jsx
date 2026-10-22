@@ -2,7 +2,7 @@ import {
   ArrowLeft, ArrowRight, BookOpen, Check, ChevronDown, CircleAlert, CircleCheck, CircleCheckBig, Download,
   AlignJustify, FileText, FileUp, GraduationCap, IndentIncrease, Info, Lightbulb, ListChecks, OctagonAlert, Scan, Type,
   WandSparkles, LogIn, LogOut, CircleUserRound, Shield, KeyRound, Users, UserPlus, Lock, Copy, Trash2, RotateCcw,
-  Ban, Eye, EyeOff, Search, Gift, Plus, Settings, ArrowUp,
+  Ban, Eye, EyeOff, Search, Gift, Plus, Settings, ArrowUp, Mail,
 } from "lucide-react";
 
 // Custom elements в React 18 получают атрибуты как строки: disabled={false} стал бы "false" (= включено),
@@ -50,6 +50,7 @@ const ICONS = {
   plus: Plus,
   settings: Settings,
   up: ArrowUp,
+  mail: Mail,
 };
 
 /** Логотип: страница с полями (пунктир — левое поле) и отметкой «проверено». Цвета — из темы. */

@@ -9,6 +9,8 @@ import Admin from "./pages/Admin.jsx";
 import Gost from "./pages/Gost.jsx";
 import StandardsPage from "./pages/StandardsPage.jsx";
 import LegalPage, { LEGAL_LINKS } from "./pages/LegalPage.jsx";
+import Verify from "./pages/Verify.jsx";
+import Forgot from "./pages/Forgot.jsx";
 import ThemeToggle from "./components/ThemeToggle.jsx";
 
 function UserButton() {
@@ -61,6 +63,8 @@ export default function App() {
           {LEGAL_LINKS.map(([to]) => <Route key={to} path={to} element={<LegalPage doc={to.slice(1)} />} />)}
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Login mode="register" />} />
+          <Route path="/verify" element={<Verify />} />
+          <Route path="/forgot" element={<Forgot />} />
           <Route path="/account" element={<Account />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="*" element={<Home notFound />} />

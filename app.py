@@ -237,6 +237,8 @@ def api_fix():
         return jsonify(error="Автоисправление доступно после входа в аккаунт.", code="login_required"), 401
     if denied == "password_change_required":
         return jsonify(error="Сначала смените временный пароль.", code="password_change_required"), 403
+    if denied == "email_unverified":
+        return jsonify(error="Подтвердите почту — код отправлен вам на email.", code="email_unverified"), 403
     if denied == "limit_reached":
         return jsonify(error=f"В этом месяце использованы все {SUBSCRIPTION_LIMIT} исправлений по подписке. "
                              f"Лимит обновится 1-го числа.", code="limit_reached"), 402

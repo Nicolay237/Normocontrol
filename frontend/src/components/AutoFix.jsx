@@ -70,6 +70,22 @@ export default function AutoFix({ file, uploadId, profileKey, standards, total =
       </Card>
     );
 
+  if (user.email_verified === false)
+    return (
+      <Card icon="mail">
+        <h2 className="title-large">Подтвердите почту</h2>
+        <p className="body-medium">
+          Мы отправили код на {user.login}. После подтверждения откроются оплата и автоисправление.
+        </p>
+        <Link to="/verify" state={{ from: location.pathname }} className="link-btn">
+          <md-filled-button>
+            <Icon name="mail" slot="icon" />
+            Ввести код
+          </md-filled-button>
+        </Link>
+      </Card>
+    );
+
   const sub = user.subscription;
   if (!autofixEnabled && sub?.active)
     return (

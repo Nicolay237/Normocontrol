@@ -48,6 +48,12 @@ export default function Account() {
             ? "Вы вошли с временным паролем от администратора. Задайте собственный — после этого откроется автоисправление."
             : <>Логин: <b>{user.login}</b>{user.role === "admin" && " · администратор"}</>}
         </p>
+        {!first && user.email_verified === false && (
+          <Link to="/verify" state={{ from: "/account" }} className="banner banner-error body-medium">
+            <Icon name="mail" />
+            <span>Почта не подтверждена — введите код из письма. Без этого оплата и автоисправление недоступны.</span>
+          </Link>
+        )}
         {!first && !user.free_autofix && user.subscription?.active && (
           <p className="body-medium access-note on">
             <Icon name="fix" size={18} />
