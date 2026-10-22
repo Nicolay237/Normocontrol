@@ -266,7 +266,7 @@ def _check_citations(chk, items, start, entries):
     if not any_cite:
         return   # ссылок в квадратных скобках нет (например, подстрочные сноски) — не проверяем
     for n, p in enumerate(entries, start=1):
-        if n not in first_seen:
+        if n not in first_seen and chk.n.get("cite_all", True):
             report.add(chk._loc(p), CATEGORY, "на этот источник нет ссылки в тексте работы")
     # порядок: первые упоминания должны идти 1, 2, 3…
     if not chk.n.get("cite_order", True):

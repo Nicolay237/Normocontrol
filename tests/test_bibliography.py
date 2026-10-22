@@ -69,10 +69,10 @@ def work(entries, citations):
     return doc
 
 
-def bib_issues(doc, tmp_path):
+def bib_issues(doc, tmp_path, profile="vkr"):
     path = tmp_path / "w.docx"
     doc.save(path)
-    return [i for i in run_normocontrol(str(path), "vkr").issues if i.category == "Список источников"]
+    return [i for i in run_normocontrol(str(path), profile).issues if i.category == "Список источников"]
 
 
 def test_correct_list_with_citations_is_clean(tmp_path):
@@ -85,6 +85,13 @@ def test_citation_problems(tmp_path):
     assert "несуществующий источник" in text            # [7] при 4 источниках
     assert "порядке упоминания" in text                 # [2] раньше [1]
     assert sum("нет ссылки" in i.message for i in issues) == 2   # 3 и 4 не упомянуты
+
+
+def test_coursework_does_not_require_citation_of_every_source(tmp_path):
+    issues = bib_issues(work(GOOD[:4], ["[1]", "[2]", "[7]"]), tmp_path, "coursework")
+    text = " | ".join(i.message for i in issues)
+    assert "нет ссылки" not in text                     # 3 и 4 не упомянуты — для курсовой это нормально
+    assert "несуществующий источник" in text            # а ссылка на несуществующий источник — ошибка
 
 
 def test_numbering_problems(tmp_path):
