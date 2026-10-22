@@ -4,11 +4,16 @@ import { useEffect, useRef } from "react";
  * Праздник на весь экран, когда замечаний нет: две хлопушки из нижних углов и залп фейерверков.
  * Холст поверх страницы не перехватывает клики и сам убирается через несколько секунд.
  * Пользователям с «уменьшить движение» в настройках системы анимацию не показываем.
+ *
+ * Движение считается по реальному времени, а не по кадрам: на мониторе 120–144 Гц салют
+ * идёт с той же скоростью, что и на 60 Гц. SPEED замедляет всё разом (1 — «как в жизни»).
  */
 
 const PALETTE = ["#ff4d6d", "#ffd166", "#06d6a0", "#4cc9f0", "#f72585", "#ffffff", "#b388ff", "#ff9f1c"];
 const GRAVITY = 0.12;
-const DURATION = 5200; // мс — потом холст исчезает
+const SPEED = 0.55;     // общее замедление: конфетти планирует, искры гаснут неспешно
+const DURATION = 9000;  // мс — потом холст исчезает
+const FADE_FROM = 6800; // мс — с этого момента оставшееся конфетти тает
 
 const rand = (a, b) => a + Math.random() * (b - a);
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
@@ -21,8 +26,8 @@ function themeColors() {
 }
 
 /** Конфетти из хлопушки: летит вверх веером, крутится, планирует и падает. */
-function popper(x, y, dir, colors) {
-  return Array.from({ length: 140 }, () => {
+function popper(x, y, dir, colors, count) {
+  return Array.from({ length: count }, () => {
     const angle = (dir > 0 ? rand(-80, -45) : rand(-135, -100)) * (Math.PI / 180);
     const speed = rand(9, 19);
     return {
@@ -30,7 +35,7 @@ function popper(x, y, dir, colors) {
       vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
       w: rand(6, 11), h: rand(3, 6), rot: rand(0, Math.PI * 2), vr: rand(-0.3, 0.3),
       wobble: rand(0, Math.PI * 2), color: pick(colors), round: Math.random() < 0.25,
-      life: 1, decay: rand(0.003, 0.006),
+      life: 1, decay: rand(0.012, 0.02),
     };
   });
 }
@@ -85,24 +90,28 @@ export default function Celebration({ onDone }) {
     const colors = themeColors();
     const small = w < 600; // на телефоне частиц меньше — анимация остаётся плавной
     let parts = [
-      ...popper(0, h, +1, colors).slice(0, small ? 70 : 140),
-      ...popper(w, h, -1, colors).slice(0, small ? 70 : 140),
+      ...popper(0, h, +1, colors, small ? 70 : 140),
+      ...popper(w, h, -1, colors, small ? 70 : 140),
     ];
-    const rockets = Array.from({ length: small ? 4 : 6 }, (_, i) => rocket(w, h, colors, 250 + i * 420));
+    const rockets = Array.from({ length: small ? 4 : 6 }, (_, i) => rocket(w, h, colors, 400 + i * 750));
     const start = performance.now();
+    let last = start;
     let frame;
 
     function draw(now) {
       const t = now - start;
+      // шаг «в кадрах при 60 Гц»: одинаковая скорость на любом мониторе; после паузы вкладки — не рывок
+      const dt = Math.min((now - last) / (1000 / 60), 3) * SPEED;
+      last = now;
       ctx.clearRect(0, 0, w, h);
 
       for (const r of rockets) {
         if (r.done || t < r.delay) continue;
         r.trail.push([r.x, r.y]);
-        if (r.trail.length > 10) r.trail.shift();
-        r.x += r.vx;
-        r.y += r.vy;
-        r.vy += GRAVITY * 1.6;
+        if (r.trail.length > 14) r.trail.shift();
+        r.x += r.vx * dt;
+        r.y += r.vy * dt;
+        r.vy += GRAVITY * 1.6 * dt;
         ctx.strokeStyle = r.color;
         ctx.lineWidth = 2;
         ctx.globalAlpha = 0.8;
@@ -117,13 +126,14 @@ export default function Celebration({ onDone }) {
 
       for (const p of parts) {
         if (p.kind === "confetti") {
-          p.vx *= 0.985;
-          p.vy = p.vy * 0.985 + GRAVITY;
-          p.wobble += 0.12;
-          p.x += p.vx + Math.sin(p.wobble) * 0.8;
-          p.y += p.vy;
-          p.rot += p.vr;
-          if (t > DURATION - 1400) p.life -= p.decay * 4;
+          const drag = 0.985 ** dt;
+          p.vx *= drag;
+          p.vy = p.vy * drag + GRAVITY * dt;
+          p.wobble += 0.12 * dt;
+          p.x += (p.vx + Math.sin(p.wobble) * 0.8) * dt;
+          p.y += p.vy * dt;
+          p.rot += p.vr * dt;
+          if (t > FADE_FROM) p.life -= p.decay * dt;
           ctx.globalAlpha = Math.max(0, p.life);
           ctx.fillStyle = p.color;
           ctx.save();
@@ -139,11 +149,12 @@ export default function Celebration({ onDone }) {
           }
           ctx.restore();
         } else {
-          p.vx *= 0.97;
-          p.vy = p.vy * 0.97 + GRAVITY * 0.6;
-          p.x += p.vx;
-          p.y += p.vy;
-          p.life -= p.decay;
+          const drag = 0.97 ** dt;
+          p.vx *= drag;
+          p.vy = p.vy * drag + GRAVITY * 0.6 * dt;
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+          p.life -= p.decay * dt;
           ctx.globalAlpha = Math.max(0, p.life);
           ctx.fillStyle = p.color;
           ctx.beginPath();
