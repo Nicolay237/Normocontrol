@@ -7,6 +7,10 @@ services:
   app:
     build: .
     restart: unless-stopped
+    # журналы не копятся бесконечно (Политика ПД: технические журналы — не дольше 6 месяцев)
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
     env_file: .env
     environment:
       DATABASE_URL: postgresql://normocontrol:${POSTGRES_PASSWORD}@db:5432/normocontrol
@@ -37,6 +41,9 @@ services:
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
     environment:
       DOMAIN: ${DOMAIN}
     ports:

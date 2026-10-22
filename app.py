@@ -23,6 +23,7 @@ from checker import standards
 from checker.fixers import fix_docx, estimate_fixable
 from checker.annotate import annotate_docx
 import auth
+import legal
 import seo
 from auth import can_autofix, current_user, public_user, packs_for_check
 from checker.packs import PACKS
@@ -162,6 +163,13 @@ def _client_config():
 @app.route("/api/profiles")
 def api_profiles():
     return jsonify([describe_profile(p) for p in PROFILES.values()])
+
+
+@app.route("/api/legal/<key>")
+def api_legal(key):
+    if key not in legal.DOCS:
+        return jsonify(error="Документ не найден."), 404
+    return jsonify(legal.get(key))
 
 
 @app.route("/api/standards")

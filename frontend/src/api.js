@@ -21,8 +21,9 @@ export function api(url, { method = "GET", body } = {}) {
 
 // ── аккаунт ──
 export const login = (login, password) => api("/api/login", { method: "POST", body: { login, password } });
-export const register = (email, password, name) =>
-  api("/api/register", { method: "POST", body: { email, password, name } });
+export const register = (email, password, name, consent) =>
+  api("/api/register", { method: "POST", body: { email, password, name, consent } });
+export const fetchLegal = (key) => fetch(`/api/legal/${key}`).then(parse);
 export const logout = () => api("/api/logout", { method: "POST", body: {} });
 export const changePassword = (current, next) =>
   api("/api/account/password", { method: "POST", body: { current, new: next } });

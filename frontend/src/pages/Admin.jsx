@@ -221,7 +221,7 @@ export default function Admin() {
   const [packs, setPacks] = useState([]);
 
   const load = () => adminUsers()
-    .then((r) => setList({ users: r.users, ephemeral: r.db_ephemeral, error: null }))
+    .then((r) => setList({ users: r.users, ephemeral: r.db_ephemeral, legalMissing: r.legal_missing, error: null }))
     .catch((e) => setList({ users: null, ephemeral: false, error: e.message }));
 
   const loadPacks = () => adminPacks().then((r) => setPacks(r.packs)).catch(() => setPacks([]));
@@ -270,6 +270,16 @@ export default function Admin() {
         <div className="banner banner-error body-medium" role="alert">
           <Icon name="error" />
           <span>База данных не подключена: учётные записи пропадут при следующем деплое. Задайте DATABASE_URL в переменных приложения на хостинге.</span>
+        </div>
+      )}
+
+      {list.legalMissing?.length > 0 && (
+        <div className="banner banner-error body-medium" role="alert">
+          <Icon name="error" />
+          <span>
+            В оферте и на странице «Контакты» не заполнено: {list.legalMissing.join(", ")}. Задайте LEGAL_NAME,
+            LEGAL_INN и CONTACT_EMAIL в .env на сервере — без реквизитов платёжный сервис не подключат.
+          </span>
         </div>
       )}
 

@@ -57,7 +57,10 @@ export default function Offer({ total, fixable }) {
           <Icon name="fix" slot="icon" />
           Исправить за {price}&nbsp;₽
         </md-filled-button>
-        <span className="label-medium muted">Разовая оплата · без регистрации · карта или СБП</span>
+        <span className="label-medium muted">
+          Разовая оплата · карта или СБП · оплачивая, вы принимаете <Link to="/offer">оферту</Link>{" "}
+          и <Link to="/refund">правила возврата</Link>
+        </span>
       </div>
 
       {soon && (

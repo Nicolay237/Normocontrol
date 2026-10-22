@@ -8,6 +8,7 @@ import Account from "./pages/Account.jsx";
 import Admin from "./pages/Admin.jsx";
 import Gost from "./pages/Gost.jsx";
 import StandardsPage from "./pages/StandardsPage.jsx";
+import LegalPage, { LEGAL_LINKS } from "./pages/LegalPage.jsx";
 import ThemeToggle from "./components/ThemeToggle.jsx";
 
 function UserButton() {
@@ -57,6 +58,7 @@ export default function App() {
           <Route path="/coursework" element={<CheckPage profileKey="coursework" />} />
           <Route path="/gost" element={<Gost />} />
           <Route path="/standards" element={<StandardsPage />} />
+          {LEGAL_LINKS.map(([to]) => <Route key={to} path={to} element={<LegalPage doc={to.slice(1)} />} />)}
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Login mode="register" />} />
           <Route path="/account" element={<Account />} />
@@ -72,6 +74,9 @@ export default function App() {
             <Link to="/coursework">Проверка курсовой</Link>
             <Link to="/standards">Проверка по выбранным ГОСТам</Link>
             <Link to="/gost">Требования ГОСТ 7.32-2017</Link>
+          </nav>
+          <nav className="footer-links footer-legal label-medium" aria-label="Документы">
+            {LEGAL_LINKS.map(([to, title]) => <Link key={to} to={to}>{title}</Link>)}
           </nav>
           <p>
             Нормы приведены по ГОСТ 7.32&#8209;2017. Сервис даёт предварительную оценку —

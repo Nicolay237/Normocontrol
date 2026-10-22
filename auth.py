@@ -58,6 +58,8 @@ users = Table(
     Column("free_autofix", Boolean, nullable=False, default=False),
     # зарегистрировался сам (а не получил учётку от администратора)
     Column("registered", Boolean, nullable=False, default=False),
+    # когда пользователь дал согласие на обработку персональных данных (при регистрации)
+    Column("consent_at", DateTime(timezone=True), nullable=True),
     # подписка действует до этого момента (None — нет подписки)
     Column("subscription_until", DateTime(timezone=True), nullable=True),
 )
@@ -92,6 +94,7 @@ _ADDED_COLUMNS = {
     "free_autofix": "BOOLEAN NOT NULL DEFAULT TRUE",
     "registered": "BOOLEAN NOT NULL DEFAULT FALSE",
     "subscription_until": "{timestamp} NULL",
+    "consent_at": "{timestamp} NULL",
 }
 
 engine = None
@@ -406,6 +409,8 @@ def register():
     err = _validate_new_password(password)
     if err:
         return jsonify(error=err), 400
+    if data.get("consent") is not True:   # 152-ФЗ: согласие — отдельное явное действие
+        return jsonify(error="Нужно согласие с офертой и на обработку персональных данных."), 400
     key = f"register:{_client_ip()}"
     if _too_many(key, REGISTER_WINDOW, REGISTER_LIMIT):
         return jsonify(error="Слишком много регистраций с вашего адреса. Попробуйте через час."), 429
@@ -416,7 +421,7 @@ def register():
         c.execute(insert(users).values(
             login=email, name=name or email.split("@")[0], password_hash=generate_password_hash(password),
             role="user", active=True, must_change_password=False, session_version=1, created_at=_now(),
-            last_login_at=_now(), free_autofix=False, registered=True,
+            last_login_at=_now(), free_autofix=False, registered=True, consent_at=_now(),
         ))
         row = c.execute(select(users).where(users.c.login == email)).mappings().first()
     _fail(key)   # счётчик регистраций с этого IP
@@ -500,8 +505,9 @@ def admin_list():
         for uid, key in c.execute(select(user_packs.c.user_id, user_packs.c.pack_key)).all():
             if key in PACKS:
                 assigned.setdefault(uid, []).append(key)
+    import legal
     return jsonify(users=[_admin_row(r, sorted(assigned.get(r["id"], []))) for r in rows],
-                   db_ephemeral=DB_IS_EPHEMERAL)
+                   db_ephemeral=DB_IS_EPHEMERAL, legal_missing=legal.missing())
 
 
 def _create(c, name, login_=None, role="user"):

@@ -11,7 +11,7 @@ export default function Login({ mode = "login" }) {
   const navigate = useNavigate();
   const location = useLocation();
   const back = location.state?.from || "/";
-  const [form, setForm] = useState({ login: "", name: "", password: "" });
+  const [form, setForm] = useState({ login: "", name: "", password: "", consent: false });
   const [show, setShow] = useState(false);
   const [state, setState] = useState({ busy: false, error: null });
 
@@ -26,7 +26,7 @@ export default function Login({ mode = "login" }) {
     setState({ busy: true, error: null });
     try {
       const res = isRegister
-        ? await register(form.login, form.password, form.name)
+        ? await register(form.login, form.password, form.name, form.consent)
         : await login(form.login, form.password);
       setSession(res);
       navigate(res.user.must_change_password ? "/account" : back, { replace: true, state: { from: back } });
@@ -68,10 +68,21 @@ export default function Login({ mode = "login" }) {
               <Icon name={show ? "eyeOff" : "eye"} size={20} />
             </button>
           </div>
+          {isRegister && (
+            <label className="check consent body-medium">
+              <input type="checkbox" required checked={form.consent}
+                     onChange={(e) => setForm({ ...form, consent: e.target.checked })} />
+              <span>
+                Принимаю условия <Link to="/offer" target="_blank">оферты</Link> и даю{" "}
+                <Link to="/consent" target="_blank">согласие на обработку персональных данных</Link> в соответствии
+                с <Link to="/privacy" target="_blank">политикой конфиденциальности</Link>
+              </span>
+            </label>
+          )}
           {state.error && (
             <div className="banner banner-error body-medium" role="alert"><Icon name="error" /><span>{state.error}</span></div>
           )}
-          <md-filled-button type="submit" class="wide" disabled={attr(state.busy)}>
+          <md-filled-button type="submit" class="wide" disabled={attr(state.busy || (isRegister && !form.consent))}>
             <Icon name={isRegister ? "userAdd" : "login"} slot="icon" />
             {isRegister
               ? (state.busy ? "Создаём аккаунт…" : "Зарегистрироваться")

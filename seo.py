@@ -10,6 +10,7 @@
 """
 
 import os
+import re
 import json
 import html
 from datetime import date
@@ -86,6 +87,40 @@ def _standards_body():
     return "".join(parts)
 
 
+_LINK = re.compile(r"\[\[(/[a-z-]*)\|([^\]]+)\]\]")
+
+
+def _legal_text(s):
+    """Текст документа с [[/путь|ссылками]] → безопасный HTML."""
+    out, pos = [], 0
+    for m in _LINK.finditer(s):
+        out.append(e(s[pos:m.start()]))
+        out.append(f'<a href="{e(m.group(1))}">{e(m.group(2))}</a>')
+        pos = m.end()
+    out.append(e(s[pos:]))
+    return "".join(out)
+
+
+def _legal_page(key, path, title, description):
+    import legal
+
+    def body():
+        doc = legal.get(key)
+        parts = [f"<h1>{e(doc['title'])}</h1>", f"<p>{_legal_text(doc['intro'])}</p>"]
+        for sec in doc["sections"]:
+            parts.append(f"<h2>{e(sec['h'])}</h2>")
+            for kind, val in sec["blocks"]:
+                if kind == "p":
+                    parts.append(f"<p>{_legal_text(val)}</p>")
+                else:
+                    parts.append("<ul>" + "".join(f"<li>{_legal_text(i)}</li>" for i in val) + "</ul>")
+        return "".join(parts)
+
+    # документы открыты для поиска, но в sitemap не нужны
+    return {"path": path, "title": f"{title} — Нормоконтроль", "description": description, "body": body,
+            "sitemap": False}
+
+
 PAGES = {
     "/": {"path": "/",
           "title": "Нормоконтроль онлайн — проверка оформления ВКР и курсовых по ГОСТ 7.32-2017",
@@ -107,6 +142,16 @@ PAGES = {
                                   "ГОСТ Р 7.0.11-2011 (диссертации), список литературы по ГОСТ Р 7.0.100-2018 или "
                                   "ГОСТ 7.1-2003, ссылки по ГОСТ Р 7.0.5-2008.",
                    "body": _standards_body},
+    "/offer": _legal_page("offer", "/offer", "Публичная оферта",
+                          "Публичная оферта сервиса «Нормоконтроль»: услуги, цены, порядок оплаты и оказания услуг."),
+    "/refund": _legal_page("refund", "/refund", "Правила возврата денежных средств",
+                           "Правила возврата денежных средств за автоисправление и подписку."),
+    "/privacy": _legal_page("privacy", "/privacy", "Политика обработки персональных данных",
+                            "Политика обработки персональных данных сервиса «Нормоконтроль»."),
+    "/consent": _legal_page("consent", "/consent", "Согласие на обработку персональных данных",
+                            "Согласие на обработку персональных данных при регистрации."),
+    "/contacts": _legal_page("contacts", "/contacts", "Контакты и реквизиты",
+                             "Контакты и реквизиты исполнителя, услуги и цены."),
     "/gost": {"path": "/gost", "title": f"{GOST['title']} — Нормоконтроль",
               "description": GOST["description"], "body": _gost_body},
 }
@@ -190,6 +235,6 @@ def sitemap_xml(base, lastmod=None):
     urls = "".join(
         f"<url><loc>{e(base + (p if p != '/' else '/'))}</loc><lastmod>{lastmod}</lastmod>"
         f"<priority>{prio.get(p, '0.5')}</priority></url>"
-        for p in PAGES)
+        for p, page in PAGES.items() if page.get("sitemap", True))
     return ('<?xml version="1.0" encoding="UTF-8"?>\n'
             f'<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{urls}</urlset>\n')

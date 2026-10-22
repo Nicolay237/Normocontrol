@@ -190,6 +190,7 @@ def test_migrate_users_between_databases(tmp_path):
 # ── обычная регистрация ──
 
 def register(c, email, password="secret-pass-1", ip="10.0.0.1", **extra):
+    extra.setdefault("consent", True)
     return c.post("/api/register", json={"email": email, "password": password, **extra},
                   headers={"X-Forwarded-For": ip})
 
@@ -223,6 +224,8 @@ def test_register_validation():
     c = client()
     assert register(c, "not-an-email").status_code == 400
     assert register(c, "short@mail.ru", password="123").status_code == 400
+    r = register(c, "noconsent@mail.ru", consent=False, ip="10.0.0.9")
+    assert r.status_code == 400 and "согласие" in r.get_json()["error"]
     assert register(c, "twice@mail.ru", ip="10.0.0.2").status_code == 201
     r = register(client(), "TWICE@mail.ru", ip="10.0.0.2")
     assert r.status_code == 409
