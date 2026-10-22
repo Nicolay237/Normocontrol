@@ -476,18 +476,22 @@ textarea.field-input { resize: vertical; min-height: 120px; line-height: 24px; }
 .offer-sub p { margin: 4px 0 0; }
 .pricing { margin-top: 40px; display: grid; gap: 16px; }
 .pricing h2 { margin: 0; }
-.price-grid { display: grid; gap: 16px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.price-card {
-  display: flex; flex-direction: column; gap: 8px; padding: 20px; border-radius: 20px;
-  background: var(--md-sys-color-surface-container); color: var(--md-sys-color-on-surface);
-}
-.price-card p { margin: 0; flex: 1; }
+/* тарифы — той же сеткой и того же размера, что карточки выбора работы над ними */
+.price-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+.price-card p { margin: 0; }
+button.price-card { border: 0; font: inherit; text-align: left; cursor: pointer; width: 100%; }
+button.price-card:focus-visible { outline: 2px solid var(--md-sys-color-primary); outline-offset: 2px; }
 .price-card.featured {
   background: var(--md-sys-color-primary-container); color: var(--md-sys-color-on-primary-container);
 }
-.price-card .link-btn, .price-card md-filled-button { align-self: flex-start; }
+.price-card.featured p { color: inherit; }
+.price-card.featured .card-icon { background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); }
+.price-card .link-btn, .price-card md-filled-button { align-self: flex-start; margin-top: 8px; }
 .price-value { font-weight: 600; }
-@media (max-width: 840px) { .price-grid { grid-template-columns: 1fr; } }
+.supporting-wide { max-width: none; }
+@media (min-width: 900px) {   /* три колонки: тарифы той же высоты, что карточки выбора */
+  .card-grid > .card, .price-grid > .card { min-height: 340px; }
+}
 .std-groups { display: grid; gap: 20px; margin-bottom: 24px; }
 .std-group { border: 0; margin: 0; padding: 0; display: grid; gap: 8px; min-width: 0; }
 .std-group legend { padding: 0; margin-bottom: 2px; }

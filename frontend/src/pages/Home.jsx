@@ -19,21 +19,30 @@ export function Pricing() {
   const price = config.autofix_price ?? 99;
   const subPrice = config.subscription_price ?? 299;
   const subLimit = config.subscription_limit ?? 30;
+  // бесплатная проверка и разовое исправление начинаются с выбора типа работы — он вверху страницы
+  const toTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
   return (
     <section className="pricing" aria-labelledby="pricing-title">
       <h2 id="pricing-title" className="headline-small">Тарифы</h2>
       <div className="price-grid">
-        <div className="price-card">
+        <button type="button" className="card card-filled card-link price-card" onClick={toTop}>
+          <md-ripple />
+          <span className="card-icon"><Icon name="check" /></span>
           <span className="label-large muted">Проверка</span>
           <span className="price-value headline-medium">0&nbsp;₽</span>
           <p className="body-medium">Отчёт с номерами страниц и файл Word с отметками — без регистрации.</p>
-        </div>
-        <div className="price-card">
+          <span className="card-action label-large">Выбрать работу <Icon name="up" size={18} /></span>
+        </button>
+        <button type="button" className="card card-filled card-link price-card" onClick={toTop}>
+          <md-ripple />
+          <span className="card-icon"><Icon name="fix" /></span>
           <span className="label-large muted">Разовое исправление</span>
           <span className="price-value headline-medium">{price}&nbsp;₽</span>
           <p className="body-medium">Автоисправление одной работы: поля, шрифт, интервалы, заголовки, список источников.</p>
-        </div>
-        <div className="price-card featured">
+          <span className="card-action label-large">Выбрать работу <Icon name="up" size={18} /></span>
+        </button>
+        <div className="card card-link price-card featured">
+          <span className="card-icon"><Icon name="gift" /></span>
           <span className="label-large">Подписка <span className="tag">выгодно</span></span>
           <span className="price-value headline-medium">{subPrice}&nbsp;₽<span className="body-medium"> / месяц</span></span>
           <p className="body-medium">
@@ -73,7 +82,7 @@ export default function Home({ notFound }) {
     <section className="container page">
       {notFound && <div className="banner banner-error body-medium" role="alert"><Icon name="error" /> Страница не найдена. Выберите тип работы:</div>}
       <h1 className="display-small hero-title">Проверьте оформление работы раньше, чем это сделает нормоконтролёр</h1>
-      <p className="body-large supporting">
+      <p className="body-large supporting supporting-wide">
         Выберите тип работы, загрузите .docx или .pdf — сервис сверит поля, шрифт, интервалы,
         заголовки, подписи и нумерацию страниц с ГОСТ&nbsp;7.32&#8209;2017 и покажет, где именно найдены отклонения.
       </p>
