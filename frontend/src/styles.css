@@ -386,7 +386,8 @@ textarea.field-input { resize: vertical; min-height: 120px; line-height: 24px; }
 .field-error .field-hint { color: var(--md-sys-color-error); }
 .field-with-action { position: relative; }
 .field-with-action .field-input { padding-right: 52px; }
-.field-with-action .icon-btn { position: absolute; right: 4px; bottom: 6px; }
+/* кнопка — по центру самого поля (подпись 20px + отступ 6px сверху, поле 52px), а не по низу блока: под полем бывает подсказка */
+.field-with-action .icon-btn { position: absolute; right: 6px; top: 32px; }
 
 .icon-btn {
   display: grid; place-items: center; width: 40px; height: 40px; border-radius: 20px; border: none;
