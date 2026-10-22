@@ -36,6 +36,7 @@ export default function AutoFix({ file, uploadId, profileKey, total = 0, fixable
       setState({ phase: "done", result, error: null, upload: null });
     } catch (e) {
       if (e.code === "login_required") setSession({ user: null, autofix_enabled: false }); // сессия истекла
+      if (e.code === "payment_required") setSession({ user, autofix_enabled: false });   // доступ закрыли
       setState({ phase: "idle", result: null, error: e.message, upload: null });
     }
   }
@@ -50,7 +51,7 @@ export default function AutoFix({ file, uploadId, profileKey, total = 0, fixable
 
   if (!user) return <Offer total={total} fixable={fixable} />;
 
-  if (!autofixEnabled)
+  if (user.must_change_password)
     return (
       <Card icon="key">
         <h2 className="title-large">Смените временный пароль</h2>
@@ -63,6 +64,9 @@ export default function AutoFix({ file, uploadId, profileKey, total = 0, fixable
         </Link>
       </Card>
     );
+
+  // вошёл, но бесплатный доступ администратор не открыл — покупка
+  if (!autofixEnabled) return <Offer total={total} fixable={fixable} />;
 
   if (state.phase === "done") {
     const r = state.result;

@@ -48,6 +48,16 @@ export default function Account() {
             ? "Вы вошли с временным паролем от администратора. Задайте собственный — после этого откроется автоисправление."
             : <>Логин: <b>{user.login}</b>{user.role === "admin" && " · администратор"}</>}
         </p>
+        {!first && (
+          <p className={`body-medium access-note${user.free_autofix ? " on" : ""}`}>
+            <Icon name={user.free_autofix ? "gift" : "fix"} size={18} />
+            <span>
+              {user.free_autofix
+                ? "Автоисправление для вас бесплатно."
+                : "Автоисправление — по оплате. Если вы преподаватель, администратор может открыть бесплатный доступ."}
+            </span>
+          </p>
+        )}
 
         {!first && user.role === "admin" && (
           <Link to="/admin" className="list-link label-large">

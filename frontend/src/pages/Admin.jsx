@@ -66,10 +66,21 @@ function UserRow({ u, me, onChanged, onCredentials }) {
           {u.role === "admin" && <span className="tag">администратор</span>}
           {!u.active && <span className="tag tag-error">заблокирован</span>}
           {u.active && u.must_change_password && <span className="tag">ждёт первого входа</span>}
+          {u.registered && <span className="tag">регистрация</span>}
+          {u.free_autofix && u.role !== "admin" && <span className="tag tag-ok">бесплатно</span>}
         </span>
         <span className="label-medium muted">последний вход: {fmtDate(u.last_login_at)}</span>
       </div>
       <div className="user-actions">
+        {u.role !== "admin" && (
+          <button className={`icon-btn${u.free_autofix ? " on" : ""}`} disabled={busy}
+                  title={u.free_autofix ? "Закрыть бесплатное исправление" : "Открыть бесплатное исправление"}
+                  aria-label={`${u.free_autofix ? "Закрыть" : "Открыть"} бесплатное исправление для ${u.login}`}
+                  aria-pressed={u.free_autofix}
+                  onClick={() => act(async () => { await adminUpdate(u.id, { free_autofix: !u.free_autofix }); onChanged(); })}>
+            <Icon name="gift" size={20} />
+          </button>
+        )}
         <button className="icon-btn" title="Сбросить пароль" aria-label={`Сбросить пароль ${u.login}`} disabled={busy}
                 onClick={() => act(async () => onCredentials((await adminReset(u.id)).created),
                                    `Сбросить пароль для ${u.name}? Старый перестанет работать.`)}>
@@ -142,7 +153,8 @@ export default function Admin() {
       <p className="label-large eyebrow">Администрирование</p>
       <h1 className="display-small hero-title">Учётные записи</h1>
       <p className="body-large supporting">
-        Выдайте логины сотрудникам и студентам университета — после входа им бесплатно доступно автоисправление.
+        Выдайте логины сотрудникам университета — им сразу доступно бесплатное автоисправление. Тем, кто
+        зарегистрировался сам, бесплатный доступ открывается кнопкой с подарком в списке.
       </p>
 
       {list.ephemeral && (

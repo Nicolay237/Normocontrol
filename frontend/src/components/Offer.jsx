@@ -12,12 +12,13 @@ const BENEFITS = [
 ];
 
 /**
- * Предложение автоисправления для пользователей без входа: сколько замечаний уйдёт, цена и кнопка.
+ * Предложение автоисправления для тех, у кого нет бесплатного доступа (без входа или после регистрации): сколько замечаний уйдёт, цена и кнопка.
  * Пока оплата не подключена (payments_enabled = false), кнопка объясняет, что оплата скоро
  * заработает, и предлагает бесплатную «работу с отметками».
  */
 export default function Offer({ total, fixable }) {
   const { config } = useProfiles();
+  const user = config.user;
   const location = useLocation();
   const [soon, setSoon] = useState(false);
   const price = config.autofix_price ?? 99;
@@ -70,8 +71,10 @@ export default function Offer({ total, fixable }) {
       )}
 
       <p className="body-medium offer-uni">
-        Вы преподаватель?{" "}
-        <Link to="/login" state={{ from: location.pathname }}>Войдите</Link> — для вас бесплатно.
+        {user
+          ? <>Вы преподаватель? Сообщите администратору свой логин <b>{user.login}</b> — он откроет бесплатный доступ.</>
+          : <>Вы преподаватель?{" "}
+              <Link to="/login" state={{ from: location.pathname }}>Войдите</Link> — для вас бесплатно.</>}
       </p>
     </section>
   );

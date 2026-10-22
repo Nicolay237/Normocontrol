@@ -55,6 +55,7 @@ export default function App() {
           <Route path="/coursework" element={<CheckPage profileKey="coursework" />} />
           <Route path="/gost" element={<Gost />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Login mode="register" />} />
           <Route path="/account" element={<Account />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="*" element={<Home notFound />} />

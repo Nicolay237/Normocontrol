@@ -185,3 +185,92 @@ def test_migrate_users_between_databases(tmp_path):
     assert set(rows) == {"admin", "ivanov.ii"}
     assert rows["admin"]["password_hash"] == "h-admin"                # пароль из старой базы
     assert rows["ivanov.ii"]["session_version"] == 3
+
+
+# ── обычная регистрация ──
+
+def register(c, email, password="secret-pass-1", ip="10.0.0.1", **extra):
+    return c.post("/api/register", json={"email": email, "password": password, **extra},
+                  headers={"X-Forwarded-For": ip})
+
+
+def test_registered_user_pays_until_admin_grants_free_access():
+    c = client()
+    r = register(c, "Student@Mail.ru", name="Студент")
+    assert r.status_code == 201
+    body = r.get_json()
+    assert body["user"]["login"] == "student@mail.ru" and body["user"]["free_autofix"] is False
+    assert body["autofix_enabled"] is False
+    r = fix_request(c)
+    assert r.status_code == 402 and r.get_json()["code"] == "payment_required"
+
+    admin = admin_client()
+    row = next(u for u in admin.get("/api/admin/users").get_json()["users"] if u["login"] == "student@mail.ru")
+    assert row["registered"] is True and row["free_autofix"] is False
+    assert admin.patch(f"/api/admin/users/{row['id']}", json={"free_autofix": True}).status_code == 200
+    assert c.get("/api/me").get_json()["autofix_enabled"] is True     # без повторного входа
+    assert fix_request(c).status_code == 200
+
+    admin.patch(f"/api/admin/users/{row['id']}", json={"free_autofix": False})
+    assert fix_request(c).status_code == 402
+
+    # вход по email и паролю после выхода
+    c2 = client()
+    assert login(c2, {"login": "student@mail.ru", "password": "secret-pass-1"}).status_code == 200
+
+
+def test_register_validation():
+    c = client()
+    assert register(c, "not-an-email").status_code == 400
+    assert register(c, "short@mail.ru", password="123").status_code == 400
+    assert register(c, "twice@mail.ru", ip="10.0.0.2").status_code == 201
+    r = register(client(), "TWICE@mail.ru", ip="10.0.0.2")
+    assert r.status_code == 409
+
+
+def test_regular_user_cannot_grant_free_access_to_self():
+    c = client()
+    register(c, "sneaky@mail.ru", ip="10.0.0.3")
+    me = c.get("/api/me").get_json()["user"]
+    assert c.patch(f"/api/admin/users/{me['id']}", json={"free_autofix": True}).status_code == 403
+
+
+def test_admin_issued_accounts_get_free_access():
+    creds = create_user("Сидоров Пётр")
+    c = client()
+    login(c, {"login": creds["login"], "password": creds["password"]})
+    assert c.get("/api/me").get_json()["user"]["free_autofix"] is True
+
+
+def test_registration_rate_limited_per_ip():
+    codes = [register(client(), f"bot{i}@mail.ru", ip="10.9.9.9").status_code for i in range(6)]
+    assert codes[:5] == [201] * 5 and codes[5] == 429
+
+
+def test_old_database_gets_new_columns(tmp_path, monkeypatch):
+    """База, созданная до регистрации: колонки добавляются, выданные учётки сохраняют бесплатный доступ."""
+    import auth
+    from sqlalchemy import create_engine, text
+    eng = create_engine("sqlite:///" + str(tmp_path / "old.db").replace("\\", "/"))
+    with eng.begin() as c:
+        c.execute(text("CREATE TABLE users (id INTEGER PRIMARY KEY, login VARCHAR(64) NOT NULL UNIQUE, "
+                       "name VARCHAR(200) NOT NULL, password_hash VARCHAR(256) NOT NULL, role VARCHAR(16) NOT NULL, "
+                       "active BOOLEAN NOT NULL, must_change_password BOOLEAN NOT NULL, "
+                       "session_version INTEGER NOT NULL, created_at DATETIME NOT NULL, last_login_at DATETIME)"))
+        c.execute(text("INSERT INTO users (login, name, password_hash, role, active, must_change_password, "
+                       "session_version, created_at) VALUES ('teacher', 'T', 'h', 'user', 1, 0, 1, '2026-01-01')"))
+    monkeypatch.setattr(auth, "engine", eng)
+    auth._add_missing_columns()
+    auth._add_missing_columns()   # повторный запуск ничего не ломает
+    with eng.connect() as c:
+        row = c.execute(text("SELECT free_autofix, registered FROM users")).first()
+    assert bool(row[0]) is True and bool(row[1]) is False
+
+    from scripts.migrate_users import migrate
+    dst = "sqlite:///" + str(tmp_path / "new.db").replace("\\", "/")
+    with eng.begin() as c:
+        c.execute(text("ALTER TABLE users DROP COLUMN free_autofix"))
+        c.execute(text("ALTER TABLE users DROP COLUMN registered"))
+    migrate("sqlite:///" + str(tmp_path / "old.db").replace("\\", "/"), dst, log=lambda *_: None)
+    with create_engine(dst).connect() as c:
+        assert bool(c.execute(text("SELECT free_autofix FROM users WHERE login='teacher'")).scalar()) is True

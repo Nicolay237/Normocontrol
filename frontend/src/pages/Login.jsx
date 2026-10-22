@@ -1,26 +1,33 @@
 import { useEffect, useState } from "react";
-import { Navigate, useLocation, useNavigate } from "react-router-dom";
-import { login } from "../api.js";
+import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { login, register } from "../api.js";
 import { useSession } from "../ProfilesContext.jsx";
 import { Field, Icon, attr, submitOnEnter } from "../ui.jsx";
 
-export default function Login() {
+/** Вход (/login) и регистрация (/register) — одна карточка, разные поля. */
+export default function Login({ mode = "login" }) {
+  const isRegister = mode === "register";
   const { user, setSession } = useSession();
   const navigate = useNavigate();
   const location = useLocation();
   const back = location.state?.from || "/";
-  const [form, setForm] = useState({ login: "", password: "" });
+  const [form, setForm] = useState({ login: "", name: "", password: "" });
   const [show, setShow] = useState(false);
   const [state, setState] = useState({ busy: false, error: null });
 
-  useEffect(() => { document.title = "Вход — Нормоконтроль"; }, []);
+  useEffect(() => {
+    document.title = (isRegister ? "Регистрация" : "Вход") + " — Нормоконтроль";
+    setState({ busy: false, error: null });
+  }, [isRegister]);
   if (user && !state.busy) return <Navigate to={user.must_change_password ? "/account" : back} replace />;
 
   async function submit(e) {
     e.preventDefault();
     setState({ busy: true, error: null });
     try {
-      const res = await login(form.login, form.password);
+      const res = isRegister
+        ? await register(form.login, form.password, form.name)
+        : await login(form.login, form.password);
       setSession(res);
       navigate(res.user.must_change_password ? "/account" : back, { replace: true, state: { from: back } });
     } catch (err) {
@@ -28,23 +35,33 @@ export default function Login() {
     }
   }
 
+  const set = (key) => (e) => setForm({ ...form, [key]: e.target.value });
+
   return (
     <section className="container page narrow">
       <div className="auth-card">
-        <span className="auth-icon"><Icon name="login" /></span>
-        <h1 className="headline-small">Вход для университета</h1>
+        <span className="auth-icon"><Icon name={isRegister ? "userAdd" : "login"} /></span>
+        <h1 className="headline-small">{isRegister ? "Регистрация" : "Вход"}</h1>
         <p className="body-medium muted">
-          Логин и пароль выдаёт администратор кафедры. После входа автоисправление оформления доступно бесплатно.
+          {isRegister
+            ? "Аккаунт нужен, чтобы исправлять работы и возвращаться к ним. Проверка оформления доступна и без него."
+            : "Войдите по email или по логину, который выдал администратор кафедры."}
         </p>
         <form className="form" onSubmit={submit} onKeyDown={submitOnEnter}>
+          {isRegister && (
+            <Field label="Как к вам обращаться (необязательно)" name="name" autoComplete="name"
+                   value={form.name} onChange={set("name")} />
+          )}
           <Field
-            label="Логин" name="username" autoComplete="username" autoCapitalize="none" spellCheck={false}
-            required autoFocus value={form.login} onChange={(e) => setForm({ ...form, login: e.target.value })}
+            label={isRegister ? "Email" : "Email или логин"} name={isRegister ? "email" : "username"}
+            type={isRegister ? "email" : "text"} autoComplete={isRegister ? "email" : "username"}
+            autoCapitalize="none" spellCheck={false} required autoFocus value={form.login} onChange={set("login")}
           />
           <div className="field-with-action">
             <Field
-              label="Пароль" name="password" type={show ? "text" : "password"} autoComplete="current-password"
-              required value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })}
+              label="Пароль" name="password" type={show ? "text" : "password"}
+              autoComplete={isRegister ? "new-password" : "current-password"} required minLength={isRegister ? 8 : undefined}
+              hint={isRegister ? "Не короче 8 символов" : undefined} value={form.password} onChange={set("password")}
             />
             <button type="button" className="icon-btn" onClick={() => setShow(!show)}
                     aria-label={show ? "Скрыть пароль" : "Показать пароль"}>
@@ -55,12 +72,16 @@ export default function Login() {
             <div className="banner banner-error body-medium" role="alert"><Icon name="error" /><span>{state.error}</span></div>
           )}
           <md-filled-button type="submit" class="wide" disabled={attr(state.busy)}>
-            <Icon name="login" slot="icon" />
-            {state.busy ? "Входим…" : "Войти"}
+            <Icon name={isRegister ? "userAdd" : "login"} slot="icon" />
+            {isRegister
+              ? (state.busy ? "Создаём аккаунт…" : "Зарегистрироваться")
+              : (state.busy ? "Входим…" : "Войти")}
           </md-filled-button>
         </form>
         <p className="body-medium muted small-note">
-          Нет логина? Обратитесь к администратору кафедры. Проверка оформления доступна и без входа.
+          {isRegister
+            ? <>Уже есть аккаунт? <Link to="/login" state={location.state}>Войти</Link></>
+            : <>Нет аккаунта? <Link to="/register" state={location.state}>Зарегистрируйтесь</Link> — это минута.</>}
         </p>
       </div>
     </section>

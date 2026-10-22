@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-Учётные записи университета: вход по логину и паролю, которые выдаёт администратор.
+Учётные записи: регистрация для всех по email и учётки университета, которые выдаёт администратор.
 
 Кто что может:
-  * без входа — проверка оформления (бесплатно для всех); автоисправление — позже за оплату;
-  * вошедший пользователь университета — проверка и автоисправление бесплатно;
+  * без входа и после обычной регистрации — проверка оформления бесплатно, автоисправление — за оплату;
+  * пользователь с бесплатным доступом (его выдаёт администратор: учётки кафедры получают доступ
+    сразу, зарегистрировавшимся его включают в /admin) — автоисправление бесплатно;
   * администратор — то же + страница управления учётками (/admin).
 
 База: DATABASE_URL (PostgreSQL на Render/Neon), без неё — SQLite-файл в папке instance/
@@ -24,7 +25,7 @@ from functools import wraps
 from flask import Blueprint, jsonify, request, session, g, abort
 from sqlalchemy import (
     MetaData, Table, Column, Integer, String, Boolean, DateTime, create_engine, select, insert,
-    update, delete, func,
+    update, delete, func, inspect, text,
 )
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -47,7 +48,15 @@ users = Table(
     Column("session_version", Integer, nullable=False, default=1),
     Column("created_at", DateTime(timezone=True), nullable=False),
     Column("last_login_at", DateTime(timezone=True), nullable=True),
+    # бесплатное автоисправление: включает только администратор
+    Column("free_autofix", Boolean, nullable=False, default=False),
+    # зарегистрировался сам (а не получил учётку от администратора)
+    Column("registered", Boolean, nullable=False, default=False),
 )
+
+# колонки, добавленные после первого запуска, и значение для уже существующих строк:
+# учётки, выданные администратором до появления регистрации, сохраняют бесплатный доступ
+_ADDED_COLUMNS = {"free_autofix": "TRUE", "registered": "FALSE"}
 
 engine = None
 DB_IS_EPHEMERAL = False
@@ -71,6 +80,7 @@ def init_app(app, base_dir):
     url = _db_url(base_dir)
     engine = create_engine(url, pool_pre_ping=True, future=True)
     metadata.create_all(engine)
+    _add_missing_columns()
     # продакшен — любой хостинг, где задан основной адрес сайта (Timeweb, Render…)
     production = bool(os.environ.get("SITE_URL") or os.environ.get("RENDER") or os.environ.get("FORCE_HTTPS"))
     DB_IS_EPHEMERAL = url.startswith("sqlite") and production
@@ -96,6 +106,16 @@ def init_app(app, base_dir):
     app.before_request(_check_origin)
 
 
+def _add_missing_columns():
+    """create_all не меняет существующие таблицы — новые колонки добавляем сами."""
+    have = {c["name"] for c in inspect(engine).get_columns("users")}
+    with engine.begin() as c:
+        for name, default in _ADDED_COLUMNS.items():
+            if name not in have:
+                c.execute(text(f"ALTER TABLE users ADD COLUMN {name} BOOLEAN NOT NULL DEFAULT {default}"))
+                log.info("в таблицу users добавлена колонка %s", name)
+
+
 def _bootstrap_admin():
     """Создаёт администратора из ADMIN_LOGIN/ADMIN_PASSWORD, если его ещё нет (пароль не перезаписывает)."""
     login = normalize_login(os.environ.get("ADMIN_LOGIN", ""))
@@ -108,6 +128,7 @@ def _bootstrap_admin():
         c.execute(insert(users).values(
             login=login, name="Администратор", password_hash=generate_password_hash(password),
             role="admin", active=True, must_change_password=False, session_version=1, created_at=_now(),
+            free_autofix=True,
         ))
     log.info("создан администратор %s", login)
 
@@ -135,13 +156,17 @@ def public_user(u):
     if not u:
         return None
     return {"id": u["id"], "login": u["login"], "name": u["name"], "role": u["role"],
-            "must_change_password": u["must_change_password"]}
+            "must_change_password": u["must_change_password"], "free_autofix": has_free_access(u)}
+
+
+def has_free_access(u):
+    return bool(u and (u["role"] == "admin" or u["free_autofix"]))
 
 
 def can_autofix():
-    """Автоисправление: бесплатно для вошедших пользователей университета (оплата — следующий этап)."""
+    """Бесплатное автоисправление: доступ выдал администратор и временный пароль уже сменён."""
     u = current_user()
-    return bool(u and not u["must_change_password"])
+    return bool(u and not u["must_change_password"] and has_free_access(u))
 
 
 def _check_origin():
@@ -179,6 +204,8 @@ def admin_required(fn):
 # ── вспомогательное ───────────────────────────────────────────────────────
 
 LOGIN_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{1,63}$")
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+REGISTRATION_ENABLED = os.environ.get("REGISTRATION_ENABLED", "1") != "0"
 PASSWORD_ALPHABET = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # без 0/O, 1/l/I
 TRANSLIT = dict(zip(
     "абвгдеёжзийклмнопрстуфхцчшщъыьэюя",
@@ -227,12 +254,15 @@ _FAILS_LOCK = threading.Lock()
 FAIL_WINDOW, FAIL_LIMIT = 15 * 60, 10
 
 
-def _too_many(key):
+REGISTER_WINDOW, REGISTER_LIMIT = 60 * 60, 5   # регистраций с одного IP в час
+
+
+def _too_many(key, window=FAIL_WINDOW, limit=FAIL_LIMIT):
     now = time.time()
     with _FAILS_LOCK:
-        hits = [t for t in _FAILS.get(key, []) if now - t < FAIL_WINDOW]
+        hits = [t for t in _FAILS.get(key, []) if now - t < window]
         _FAILS[key] = hits
-        return len(hits) >= FAIL_LIMIT
+        return len(hits) >= limit
 
 
 def _fail(key):
@@ -247,12 +277,55 @@ def me():
     return jsonify(user=public_user(current_user()), autofix_enabled=can_autofix())
 
 
+def _client_ip():
+    return request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()
+
+
+def _start_session(row):
+    session.clear()
+    session.permanent = True
+    session["uid"], session["ver"] = row["id"], row["session_version"]
+    g.user = dict(row)
+
+
+@bp.post("/api/register")
+def register():
+    """Обычная регистрация по email: вход сразу, автоисправление — за оплату, пока админ не откроет доступ."""
+    if not REGISTRATION_ENABLED:
+        return jsonify(error="Регистрация временно закрыта."), 403
+    data = request.get_json(silent=True) or {}
+    email = normalize_login(data.get("email"))
+    name = (data.get("name") or "").strip()[:200]
+    password = data.get("password") or ""
+    if not EMAIL_RE.match(email) or len(email) > 64:
+        return jsonify(error="Укажите настоящий email — он будет логином для входа."), 400
+    err = _validate_new_password(password)
+    if err:
+        return jsonify(error=err), 400
+    key = f"register:{_client_ip()}"
+    if _too_many(key, REGISTER_WINDOW, REGISTER_LIMIT):
+        return jsonify(error="Слишком много регистраций с вашего адреса. Попробуйте через час."), 429
+
+    with engine.begin() as c:
+        if c.execute(select(users.c.id).where(users.c.login == email)).first():
+            return jsonify(error="Этот email уже зарегистрирован — войдите в аккаунт."), 409
+        c.execute(insert(users).values(
+            login=email, name=name or email.split("@")[0], password_hash=generate_password_hash(password),
+            role="user", active=True, must_change_password=False, session_version=1, created_at=_now(),
+            last_login_at=_now(), free_autofix=False, registered=True,
+        ))
+        row = c.execute(select(users).where(users.c.login == email)).mappings().first()
+    _fail(key)   # счётчик регистраций с этого IP
+    _start_session(row)
+    return jsonify(user=public_user(row), autofix_enabled=can_autofix()), 201
+
+
 @bp.post("/api/login")
 def login():
     data = request.get_json(silent=True) or {}
     login_ = normalize_login(data.get("login"))
     password = data.get("password") or ""
-    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()
+    ip = _client_ip()
     keys = (f"ip:{ip}", f"login:{login_}")
     if any(_too_many(k) for k in keys):
         return jsonify(error="Слишком много неудачных попыток. Попробуйте через 15 минут."), 429
@@ -268,10 +341,7 @@ def login():
 
     with engine.begin() as c:
         c.execute(update(users).where(users.c.id == row["id"]).values(last_login_at=_now()))
-    session.clear()
-    session.permanent = True
-    session["uid"], session["ver"] = row["id"], row["session_version"]
-    g.user = dict(row)
+    _start_session(row)
     return jsonify(user=public_user(row), autofix_enabled=can_autofix())
 
 
@@ -309,6 +379,7 @@ def _admin_row(r):
     return {
         "id": r["id"], "login": r["login"], "name": r["name"], "role": r["role"], "active": r["active"],
         "must_change_password": r["must_change_password"],
+        "free_autofix": has_free_access(r), "registered": r["registered"],
         "created_at": r["created_at"].isoformat() if r["created_at"] else None,
         "last_login_at": r["last_login_at"].isoformat() if r["last_login_at"] else None,
     }
@@ -336,7 +407,7 @@ def _create(c, name, login_=None, role="user"):
     c.execute(insert(users).values(
         login=login_, name=name or login_, password_hash=generate_password_hash(password),
         role=role if role in ("user", "admin") else "user", active=True,
-        must_change_password=True, session_version=1, created_at=_now(),
+        must_change_password=True, session_version=1, created_at=_now(), free_autofix=True,
     ))
     return {"name": name or login_, "login": login_, "password": password}
 
@@ -401,6 +472,8 @@ def admin_update(uid):
         if uid == me_["id"] and data["role"] != "admin":
             return jsonify(error="Нельзя снять права администратора с самого себя."), 400
         values["role"] = data["role"]
+    if "free_autofix" in data:
+        values["free_autofix"] = bool(data["free_autofix"])
     if not values:
         return jsonify(error="Нечего менять."), 400
     with engine.begin() as c:

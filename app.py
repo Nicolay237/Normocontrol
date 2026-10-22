@@ -197,10 +197,14 @@ def api_check():
 
 @app.route("/api/fix", methods=["POST"])
 def api_fix():
-    if not current_user():
-        return jsonify(error="Автоисправление доступно после входа в аккаунт университета.", code="login_required"), 401
-    if not can_autofix():
+    u = current_user()
+    if not u:
+        return jsonify(error="Автоисправление доступно после входа в аккаунт.", code="login_required"), 401
+    if u["must_change_password"]:
         return jsonify(error="Сначала смените временный пароль.", code="password_change_required"), 403
+    if not can_autofix():
+        return jsonify(error="Бесплатное автоисправление для вашего аккаунта не открыто.",
+                       code="payment_required"), 402
     profile = request.form.get("profile", "vkr")
     if profile not in PROFILES:
         return jsonify(error="Неизвестный тип работы."), 400
