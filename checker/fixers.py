@@ -262,7 +262,8 @@ class _Fixer:
             it["obj"].paragraph_format.page_break_before = True
             self.done("Заголовок начат с новой страницы")
         self.remove_extra_empty(items)
-        self.fix_bibliography(items)
+        if self.n["bib_standard"] == "7.0.100":   # исправитель знает правила только ГОСТ Р 7.0.100
+            self.fix_bibliography(items)
 
     # ---- страница
     def fix_sections(self):

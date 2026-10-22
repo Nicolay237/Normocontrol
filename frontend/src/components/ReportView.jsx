@@ -91,7 +91,7 @@ export default function ReportView({ report, children }) {
           {report.upload_id && !clean ? (
             <>
               {/* .docx: сама работа с подсветкой и примечаниями Word на местах ошибок */}
-              <md-filled-tonal-button href={annotatedUrl(report.upload_id, report.profile.key)} download="">
+              <md-filled-tonal-button href={annotatedUrl(report.upload_id, report.profile.key, report.standards)} download="">
                 <Icon name="file" slot="icon" />
                 Работа с отметками
               </md-filled-tonal-button>

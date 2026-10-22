@@ -88,6 +88,13 @@ def _fmt(v):
     return f"{v:g}".replace(".", ",")
 
 
+def strip_gost732_refs(msg):
+    """«… (п. 6.2.1)», «(ГОСТ 7.32-2017, п. 6.16)», «по ГОСТ 7.32-2017 (п. 6.3.1) — » → без ссылок на 7.32."""
+    msg = re.sub(r"\s*\((?:ГОСТ 7\.32-2017,\s*)?пп?\.\s*[\d.,\s–-]+\)", "", msg)
+    msg = re.sub(r",?\s*по ГОСТ 7\.32-2017\s*(?:\(п\.\s*[\d.]+\))?\s*", " ", msg)
+    return re.sub(r"\s{2,}", " ", msg).strip()
+
+
 def mark_front_matter(items):
     """
     Титульный лист, задание и прочее до первого структурного элемента (АННОТАЦИЯ, РЕФЕРАТ,
@@ -120,6 +127,14 @@ class DocxChecker:
         self._runs_cache = {}
 
     # ── вспомогательное ──────────────────────────────────────────────────
+
+    def font_ok(self, fname):
+        allowed = self.n.get("font_names") or [self.n["font_name"]]
+        return not fname or fname in allowed or fname.lower() in ALT_FONTS
+
+    @property
+    def font_want(self):
+        return " или ".join(f"«{f}»" for f in (self.n.get("font_names") or [self.n["font_name"]]))
 
     def text(self, p):
         key = id(p._p)
@@ -250,27 +265,30 @@ class DocxChecker:
 
     def run(self):
         items = self.prepare()
-        self.check_page_setup()
-        self.check_page_numbers()
-        self.check_body(items)
-        self.check_headings(items)
-        self.check_toc(items)
-        self.check_captions(items)
-        self.check_tables(items)
-        self.check_structure(items)
-        self.check_new_page(items)
+        layout = self.n["check_layout"]
+        if layout:
+            self.check_page_setup()
+            self.check_page_numbers()
+            self.check_body(items)
+            self.check_headings(items)
+            self.check_toc(items)
+            self.check_captions(items)
+            self.check_tables(items)
+            self.check_structure(items)
+            self.check_new_page(items)
         check_bibliography(self, items)
         if self.packs:
             from .packs import run_packs
             run_packs(self, items, self.packs)
-        # записи списка источников: по ГОСТ Р 7.0.100 в них « : », « / », « ; » — с пробелами
-        bib_ids = {id(p._p) for p in find_bib_section(self, items)[1]}
-        check_typography(
-            [(self._loc(it["obj"]), self.text(it["obj"]),
-              "bib" if id(it["obj"]._p) in bib_ids else it["role"], has_page_break(it["obj"]))
-             for it in items if it["kind"] == "p" and it["role"] not in ("toc", "skip", "front")],
-            self.report,
-        )
+        if layout:
+            # записи списка источников: по ГОСТ Р 7.0.100 в них « : », « / », « ; » — с пробелами
+            bib_ids = {id(p._p) for p in find_bib_section(self, items)[1]}
+            check_typography(
+                [(self._loc(it["obj"]), self.text(it["obj"]),
+                  "bib" if id(it["obj"]._p) in bib_ids else it["role"], has_page_break(it["obj"]))
+                 for it in items if it["kind"] == "p" and it["role"] not in ("toc", "skip", "front")],
+                self.report,
+            )
         for issue in self.report.issues:
             issue.anchor = self._anchors.get(issue.location)
             m = re.match(r"Раздел документа №(\d+)", issue.location)
@@ -303,7 +321,7 @@ class DocxChecker:
                 if not (ok_a4 or ok_a3):
                     self.report.add(loc, "Формат листа",
                                     f"размер страницы {_fmt(w)}×{_fmt(h)} см, ожидается A4 (21×29,7 см)")
-            if landscape:
+            if landscape or not n["check_margins"]:
                 continue  # у альбомных листов поля повёрнуты — не сравниваем
             vals = {"left": emu_to_cm(s.left_margin), "right": emu_to_cm(s.right_margin),
                     "top": emu_to_cm(s.top_margin), "bottom": emu_to_cm(s.bottom_margin)}
@@ -342,16 +360,25 @@ class DocxChecker:
                     if al in ("left", "right", "justify") and "<w:tab/>" not in p_el.xml:
                         bad_align = al
 
+        pos = self.n["page_number_pos"]
+        where = {"bottom": "внизу страницы по центру", "top": "вверху страницы по центру",
+                 "any": "сквозная, арабскими цифрами"}[pos]
         if not any(footer_has) and not any(header_has):
             self.report.add("Документ", "Нумерация страниц",
-                            "номера страниц не найдены: нужна нумерация арабскими цифрами "
-                            "внизу страницы по центру (Вставка → Номер страницы)")
+                            f"номера страниц не найдены: нужна нумерация арабскими цифрами, {where} "
+                            "(Вставка → Номер страницы)")
             return
-        if not any(footer_has):
+        if pos == "bottom" and not any(footer_has):
             self.report.add("Документ", "Нумерация страниц",
                             "номер страницы стоит в верхнем колонтитуле, по ГОСТ 7.32-2017 (п. 6.3.1) — "
                             "внизу страницы по центру")
             return
+        if pos == "top" and not any(header_has):
+            self.report.add("Документ", "Нумерация страниц",
+                            "номер страницы стоит внизу, а печатается на середине верхнего поля страницы")
+            return
+        if pos == "top":
+            return   # выравнивание проверяем только у номера внизу
         for i, (f_has, h_has) in enumerate(zip(footer_has, header_has), start=1):
             if not f_has and not h_has:
                 orient = " (альбомные листы)" if self.doc.sections[i - 1].page_width > self.doc.sections[i - 1].page_height else ""
@@ -372,8 +399,8 @@ class DocxChecker:
             if res.script(run, p):
                 continue
             fname = res.font_name(run, p)
-            if (fname and fname != n["font_name"] and fname.lower() not in ALT_FONTS and not formula):
-                self.report.add(loc, "Шрифт", f"использован шрифт «{fname}», ожидается «{n['font_name']}»")
+            if not self.font_ok(fname) and not formula:
+                self.report.add(loc, "Шрифт", f"использован шрифт «{fname}», ожидается {self.font_want}")
             size = res.font_size(run, p)
             if size is not None and not formula:
                 lo, hi = n["font_size_min_pt"] - tol, n["font_size_max_pt"] + tol
@@ -460,9 +487,10 @@ class DocxChecker:
                                     f"название таблицы с абзацным отступом {_fmt(indent)} см — ожидается без отступа (п. 6.6.3)")
             else:
                 continued = prev_formula and re.match(r"^\s*где\b", text, re.IGNORECASE)
-                if align != 'justify':
+                if align not in n["body_align"]:
+                    want = " или ".join({"justify": "по ширине", "left": "по левому краю"}[a] for a in n["body_align"])
                     self.report.add(loc, "Выравнивание",
-                                    f"выравнивание {self._ru_align(align)}, ожидается по ширине")
+                                    f"выравнивание {self._ru_align(align)}, ожидается {want}")
                 if not continued and abs(indent - n["first_line_indent_cm"]) > tol_i:
                     self.report.add(loc, "Красная строка",
                                     f"отступ первой строки {_fmt(indent)} см, ожидается {_fmt(n['first_line_indent_cm'])} см")
@@ -487,7 +515,7 @@ class DocxChecker:
             runs = self._runs(p)
             structural = it["role"] == "structural"
 
-            if not structural and runs and not all(res.bold(r, p) for r in runs):
+            if n["heading_bold"] and not structural and runs and not all(res.bold(r, p) for r in runs):
                 self.report.add(loc, "Оформление заголовка", "заголовок раздела должен быть выделен жирным (п. 6.2.3)")
             if ends_with_sentence_dot(text):
                 self.report.add(loc, "Оформление заголовка", "в конце заголовка не должно быть точки")
@@ -509,12 +537,14 @@ class DocxChecker:
                                     "после номера раздела/подраздела не должно быть точки (п. 6.4.1)")
                 if text[:1].islower():
                     self.report.add(loc, "Оформление заголовка", "заголовок должен начинаться с прописной буквы")
+                if n["heading_align"] == "center" and res.alignment(p) != "center":
+                    self.report.add(loc, "Оформление заголовка", "заголовок располагается посередине страницы")
 
             for run in runs:
                 fname = res.font_name(run, p)
-                if fname and fname != n["font_name"] and fname.lower() not in ALT_FONTS:
+                if not self.font_ok(fname):
                     self.report.add(loc, "Оформление заголовка",
-                                    f"шрифт заголовка «{fname}», ожидается «{n['font_name']}»")
+                                    f"шрифт заголовка «{fname}», ожидается {self.font_want}")
                 size = res.font_size(run, p)
                 if size is not None and (size < n["font_size_min_pt"] - tol or size > n["font_size_max_pt"] + tol):
                     self.report.add(loc, "Оформление заголовка",
@@ -651,11 +681,11 @@ class DocxChecker:
                     for p in cell.paragraphs:
                         for run in self._runs(p):
                             fname = res.font_name(run, p)
-                            if (fname and fname != n["font_name"] and fname.lower() not in ALT_FONTS):
+                            if not self.font_ok(fname):
                                 loc = f"Таблица №{ti}, строка {ri}, столбец {ci}"
                                 self._anchors[loc] = ("cell", it["i"], ri - 1, ci - 1)
                                 self.report.add(loc, "Шрифт (таблица)",
-                                                f"использован шрифт «{fname}», ожидается «{n['font_name']}»")
+                                                f"использован шрифт «{fname}», ожидается {self.font_want}")
                                 break
 
     # ── структура ────────────────────────────────────────────────────────

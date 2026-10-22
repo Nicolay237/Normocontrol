@@ -123,6 +123,7 @@ function UserRow({ u, me, packs, onChanged, onCredentials }) {
     try { await fn(); } catch (e) { window.alert(e.message); } finally { setBusy(false); }
   }
   const self = u.id === me.id;
+  const subActive = u.subscription_until && new Date(u.subscription_until) > new Date();
   return (
     <li className={`user-row${u.active ? "" : " inactive"}`}>
       <div className="user-main">
@@ -134,8 +135,25 @@ function UserRow({ u, me, packs, onChanged, onCredentials }) {
           {u.active && u.must_change_password && <span className="tag">ждёт первого входа</span>}
           {u.registered && <span className="tag">регистрация</span>}
           {u.free_autofix && u.role !== "admin" && <span className="tag tag-ok">бесплатно</span>}
+          {subActive && <span className="tag tag-ok">подписка до {fmtDate(u.subscription_until)}</span>}
         </span>
         <span className="label-medium muted">последний вход: {fmtDate(u.last_login_at)}</span>
+        {u.role !== "admin" && !u.free_autofix && (
+          <span className="pack-toggles">
+            <button type="button" className="pack-toggle label-medium" disabled={busy}
+                    title={subActive ? "Продлить подписку на 30 дней" : "Выдать подписку на 30 дней"}
+                    onClick={() => act(async () => { await adminUpdate(u.id, { subscription_days: 30 }); onChanged(); })}>
+              <Icon name="plus" size={16} /> Подписка 30 дней
+            </button>
+            {subActive && (
+              <button type="button" className="pack-toggle label-medium" disabled={busy}
+                      onClick={() => act(async () => { await adminUpdate(u.id, { subscription_cancel: true }); onChanged(); },
+                                         `Отменить подписку для ${u.name}?`)}>
+                <Icon name="block" size={16} /> Отменить подписку
+              </button>
+            )}
+          </span>
+        )}
         {packs.length > 0 && (
           <span className="pack-toggles">
             {packs.map((p) => {

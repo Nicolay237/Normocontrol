@@ -39,6 +39,7 @@ HEAD_TIGHT_INITIALS = re.compile(rf"^{SURNAME},\s+[{UPPER}]\.[{UPPER}]\.")
 YEAR = re.compile(r"(?<!\d)(1[89]\d{2}|20\d{2})(?!\d)")
 URL = re.compile(r"(https?://|www\.)\S+", re.I)
 URL_LABEL = re.compile(r"URL\s*:", re.I)
+ACCESS_LABEL = re.compile(r"Режим\s+доступа\s*:", re.I)
 ACCESS_DATE = re.compile(r"\(\s*дата обращения\s*:\s*\d{1,2}\.\d{1,2}\.\d{4}\s*\)", re.I)
 OLD_ER = re.compile(r"\[\s*Электронный ресурс\s*\]", re.I)
 CITY_ABBR = re.compile(r"(?<![\w.])(М|СПб|Л|Мн|К|Н\.\s?Новгород)\.\s*:")
@@ -129,34 +130,41 @@ def _numbering_format(chk, p):
         return None
 
 
-def check_entry(text):
-    """Замечания к одной записи (без номера в начале). Возвращает список сообщений."""
+def check_entry(text, standard="7.0.100"):
+    """
+    Замечания к одной записи (без номера в начале). Возвращает список сообщений.
+    standard — «7.0.100» (действующий ГОСТ Р 7.0.100-2018) или «7.1» (прежний ГОСТ 7.1-2003:
+    в нём допустимы «[Электронный ресурс]», «М.», «СПб.» и «Режим доступа:»).
+    """
+    old = standard == "7.1"
+    std = "ГОСТ 7.1-2003" if old else "ГОСТ Р 7.0.100-2018"
     msgs = []
     has_url = bool(URL.search(text))
 
     m = HEAD_NO_COMMA.match(text)
     if m:
-        msgs.append(f"после фамилии автора ставится запятая: «{m.group(1)}, {_spaced(m.group(2))}» "
-                    "(ГОСТ Р 7.0.100-2018)")
+        msgs.append(f"после фамилии автора ставится запятая: «{m.group(1)}, {_spaced(m.group(2))}» ({std})")
     elif HEAD_TIGHT_INITIALS.match(text):
         msgs.append("инициалы пишутся через пробел: «И. О.»")
 
-    if OLD_ER.search(text):
+    if OLD_ER.search(text) and not old:
         msgs.append("«[Электронный ресурс]» по ГОСТ Р 7.0.100-2018 не применяется — "
                     "вместо него «Текст : электронный» (можно не указывать)")
     if has_url:
-        if not URL_LABEL.search(text):
-            msgs.append("перед электронным адресом пишется «URL:»")
+        label = URL_LABEL.search(text) or (old and ACCESS_LABEL.search(text))
+        if not label:
+            msgs.append("перед электронным адресом пишется «Режим доступа:» или «URL:»" if old
+                        else "перед электронным адресом пишется «URL:»")
         else:
-            before = text[:URL_LABEL.search(text).start()].rstrip()
+            before = text[:label.start()].rstrip()
             if before and not re.search(r"[–—]$", before):
                 msgs.append("перед «URL:» ставятся точка и тире: «. – URL: …»")
-        if not ACCESS_DATE.search(text):
+        if not ACCESS_DATE.search(text) and not old:
             msgs.append("для электронного ресурса указывается дата обращения: «(дата обращения: 15.05.2025)»")
     elif not YEAR.search(text):
         msgs.append("не указан год издания")
 
-    for mm in CITY_ABBR.finditer(text):
+    for mm in ([] if old else CITY_ABBR.finditer(text)):
         full = CITY_FULL.get(mm.group(1).replace(" ", ""), "полное название")
         msgs.append(f"место издания пишется полностью: «{full}», а не «{mm.group(1)}.» (ГОСТ Р 7.0.100-2018)")
         break
@@ -182,10 +190,16 @@ def _spaced(initials):
 
 
 def check_bibliography(chk, items):
+    norms = chk.n
+    if not norms.get("bib_standard") and not norms.get("citations", True):
+        return
     start, entries = find_section(chk, items)
     if start is None or not entries:
         return
     report = chk.report
+    if not norms.get("bib_standard"):
+        _check_citations(chk, items, start, entries)   # только ссылки, описание не проверяем
+        return
 
     # нумерация
     manual = [_strip_number(chk.text(p)) for p in entries]
@@ -212,7 +226,7 @@ def check_bibliography(chk, items):
         else:
             report.add(loc, CATEGORY, "источник не пронумерован (ГОСТ 7.32-2017, п. 6.16)")
 
-        for msg in check_entry(rest):
+        for msg in check_entry(rest, norms.get("bib_standard", "7.0.100")):
             report.add(loc, CATEGORY, msg)
 
     # повторы
@@ -223,7 +237,8 @@ def check_bibliography(chk, items):
             report.add(chk._loc(p), CATEGORY, f"источник повторяется (совпадает с записью № {seen[key]})")
         seen.setdefault(key, len(seen) + 1)
 
-    _check_citations(chk, items, start, entries)
+    if norms.get("citations", True):
+        _check_citations(chk, items, start, entries)
 
 
 def _check_citations(chk, items, start, entries):
@@ -254,6 +269,8 @@ def _check_citations(chk, items, start, entries):
         if n not in first_seen:
             report.add(chk._loc(p), CATEGORY, "на этот источник нет ссылки в тексте работы")
     # порядок: первые упоминания должны идти 1, 2, 3…
+    if not chk.n.get("cite_order", True):
+        return
     for prev, cur in zip(first_seen, first_seen[1:]):
         if cur < prev:
             report.add(chk._loc(entries[cur - 1]), CATEGORY,

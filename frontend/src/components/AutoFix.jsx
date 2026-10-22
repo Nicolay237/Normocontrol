@@ -19,7 +19,7 @@ function Card({ icon, done, children }) {
   );
 }
 
-export default function AutoFix({ file, uploadId, profileKey, total = 0, fixable = 0 }) {
+export default function AutoFix({ file, uploadId, profileKey, standards, total = 0, fixable = 0 }) {
   const [state, setState] = useState({ phase: "idle", result: null, error: null, upload: null });
   const { user, autofixEnabled, setSession } = useSession();
   const location = useLocation();
@@ -29,14 +29,19 @@ export default function AutoFix({ file, uploadId, profileKey, total = 0, fixable
     setState({ phase: "loading", result: null, error: null, upload: null });
     try {
       const result = await fixFile({
-        uploadId, file, profile: profileKey,
+        uploadId, file, profile: profileKey, standards,
         // прогресс появится, только если файл придётся отправить заново
         onProgress: (upload) => setState((s) => ({ ...s, upload })),
       });
       setState({ phase: "done", result, error: null, upload: null });
+      // остаток лимита подписки — в шапку аккаунта и карточку
+      if (result.subscription && user)
+        setSession({ user: { ...user, subscription: result.subscription },
+                     autofix_enabled: user.free_autofix || result.subscription.left > 0 });
     } catch (e) {
       if (e.code === "login_required") setSession({ user: null, autofix_enabled: false }); // сессия истекла
-      if (e.code === "payment_required") setSession({ user, autofix_enabled: false });   // доступ закрыли
+      if (e.code === "payment_required" || e.code === "limit_reached")
+        setSession({ user, autofix_enabled: false });   // доступ закрыли или лимит подписки исчерпан
       setState({ phase: "idle", result: null, error: e.message, upload: null });
     }
   }
@@ -65,7 +70,19 @@ export default function AutoFix({ file, uploadId, profileKey, total = 0, fixable
       </Card>
     );
 
-  // вошёл, но бесплатный доступ администратор не открыл — покупка
+  const sub = user.subscription;
+  if (!autofixEnabled && sub?.active)
+    return (
+      <Card icon="fix">
+        <h2 className="title-large">Лимит подписки на этот месяц исчерпан</h2>
+        <p className="body-medium">
+          Использованы все {sub.limit} исправлений. Лимит обновится 1-го числа, подписка действует
+          до {new Date(sub.until).toLocaleDateString("ru-RU")}. Пока можно скачать «Работу с отметками» выше.
+        </p>
+      </Card>
+    );
+
+  // вошёл, но бесплатного доступа и подписки нет — покупка
   if (!autofixEnabled) return <Offer total={total} fixable={fixable} />;
 
   if (state.phase === "done") {
@@ -110,6 +127,12 @@ export default function AutoFix({ file, uploadId, profileKey, total = 0, fixable
             <h3 className="title-medium">Осталось исправить вручную</h3>
             <IssueList issues={remaining} />
           </div>
+        )}
+
+        {r.subscription?.active && !user.free_autofix && (
+          <p className="body-medium muted">
+            По подписке в этом месяце осталось {r.subscription.left} из {r.subscription.limit} исправлений.
+          </p>
         )}
 
         <p className="body-medium note">

@@ -48,13 +48,23 @@ export default function Account() {
             ? "Вы вошли с временным паролем от администратора. Задайте собственный — после этого откроется автоисправление."
             : <>Логин: <b>{user.login}</b>{user.role === "admin" && " · администратор"}</>}
         </p>
-        {!first && (
+        {!first && !user.free_autofix && user.subscription?.active && (
+          <p className="body-medium access-note on">
+            <Icon name="fix" size={18} />
+            <span>
+              Подписка до {new Date(user.subscription.until).toLocaleDateString("ru-RU")}:
+              в этом месяце использовано {user.subscription.used} из {user.subscription.limit} исправлений.
+            </span>
+          </p>
+        )}
+        {!first && !(user.subscription?.active && !user.free_autofix) && (
           <p className={`body-medium access-note${user.free_autofix ? " on" : ""}`}>
             <Icon name={user.free_autofix ? "gift" : "fix"} size={18} />
             <span>
               {user.free_autofix
                 ? "Автоисправление для вас бесплатно."
-                : "Автоисправление — по оплате. Если вы преподаватель, администратор может открыть бесплатный доступ."}
+                : <>Автоисправление — по оплате или по <Link to="/">подписке</Link>. Если вы преподаватель,
+                    администратор может открыть бесплатный доступ.</>}
             </span>
           </p>
         )}

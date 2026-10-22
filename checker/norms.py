@@ -89,6 +89,19 @@ _BASE = {
 
     "check_page_numbers": True,
     "heading_new_page": True,
+
+    # параметры, которые различаются у стандартов в разделе «Выбор ГОСТов» (standards.py)
+    "font_names": None,            # допустимые гарнитуры; None — только font_name
+    "body_align": ["justify"],     # выравнивание основного текста
+    "check_margins": True,
+    "page_number_pos": "bottom",   # bottom | top | any
+    "heading_align": "indent",     # indent — с абзацного отступа (7.32), center — посередине (7.0.11)
+    "heading_bold": True,
+    "check_layout": True,          # False — только список источников и ссылки
+    "bib_standard": "7.0.100",     # 7.0.100 | 7.1 | None — правила библиографического описания
+    "citations": True,             # ссылки [N] в тексте (ГОСТ Р 7.0.5)
+    "cite_order": True,            # источники в порядке упоминания (ГОСТ 7.32, п. 6.16)
+    "strip_clauses": False,        # убрать из замечаний ссылки на пункты ГОСТ 7.32
     "required_sections": [
         ("ВВЕДЕНИЕ", ("ВВЕДЕНИЕ",)),
         ("ЗАКЛЮЧЕНИЕ", ("ЗАКЛЮЧЕНИЕ", "ВЫВОДЫ")),

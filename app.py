@@ -17,8 +17,9 @@ from urllib.parse import quote
 from flask import Flask, request, jsonify, Response, send_from_directory, send_file, redirect
 
 from checker import (
-    PROFILES, describe_profile, run_normocontrol_cached, build_html_report,
+    PROFILES, describe_profile, run_normocontrol_cached, build_html_report, resolve_profile,
 )
+from checker import standards
 from checker.fixers import fix_docx, estimate_fixable
 from checker.annotate import annotate_docx
 import auth
@@ -148,17 +149,34 @@ def api_config():
 
 # Цена автоисправления для пользователей без входа (оплата подключается следующим шагом).
 AUTOFIX_PRICE = int(os.environ.get("AUTOFIX_PRICE", "99"))
+SUBSCRIPTION_PRICE, SUBSCRIPTION_LIMIT = auth.SUBSCRIPTION_PRICE, auth.SUBSCRIPTION_LIMIT
 PAYMENTS_ENABLED = os.environ.get("PAYMENTS_ENABLED") == "1"
 
 
 def _client_config():
     return {"autofix_enabled": can_autofix(), "user": public_user(current_user()),
-            "autofix_price": AUTOFIX_PRICE, "payments_enabled": PAYMENTS_ENABLED}
+            "autofix_price": AUTOFIX_PRICE, "payments_enabled": PAYMENTS_ENABLED,
+            "subscription_price": SUBSCRIPTION_PRICE, "subscription_limit": SUBSCRIPTION_LIMIT}
 
 
 @app.route("/api/profiles")
 def api_profiles():
     return jsonify([describe_profile(p) for p in PROFILES.values()])
+
+
+@app.route("/api/standards")
+def api_standards():
+    return jsonify(standards.describe())
+
+
+def _profile_from(values):
+    """Тип работы и набор ГОСТов из формы/запроса. Ошибка — ValueError с текстом для пользователя."""
+    profile = values.get("profile", "vkr")
+    if profile == "custom":
+        return profile, standards.normalize((values.get("standards") or "").split(","))
+    if profile not in PROFILES:
+        raise ValueError("Неизвестный тип работы.")
+    return profile, ()
 
 
 @app.route("/api/check", methods=["POST"])
@@ -167,9 +185,10 @@ def api_check():
     if not f or not f.filename:
         return jsonify(error="Файл не выбран."), 400
 
-    profile = request.form.get("profile", "vkr")
-    if profile not in PROFILES:
-        return jsonify(error="Неизвестный тип работы."), 400
+    try:
+        profile, stds = _profile_from(request.form)
+    except ValueError as e:
+        return jsonify(error=str(e)), 400
 
     ext = os.path.splitext(f.filename)[1].lower()
     if ext not in ALLOWED_EXT:
@@ -180,7 +199,7 @@ def api_check():
         f.save(path)
         packs = packs_for_check(current_user())
         try:
-            report = run_normocontrol_cached(path, profile, packs)
+            report = run_normocontrol_cached(path, profile, packs, stds)
         except Exception as e:
             app.logger.exception("check failed")
             msg = "Не удалось обработать файл. Убедитесь, что он не повреждён и не защищён паролем."
@@ -193,7 +212,10 @@ def api_check():
     data = report.to_dict(f.filename)
     data["report_id"] = store.put("report", f.filename, data=build_html_report(report, f.filename))
     data["upload_id"] = upload_id
-    data["fixable"] = estimate_fixable(report) if upload_id else 0
+    # автоисправление умеет ГОСТ 7.32 и ГОСТ Р 7.0.100 — для других наборов его не предлагаем
+    data["autofix_supported"] = bool(upload_id) and (profile != "custom" or standards.fixable(stds))
+    data["fixable"] = estimate_fixable(report) if data["autofix_supported"] else 0
+    data["standards"] = list(stds)
     # какие дополнительные проверки вуза применены (для подписи в отчёте)
     data["extra_checks"] = [PACKS[k].title for k, _ in packs if profile in PACKS[k].profiles] if ext == ".docx" else []
     return jsonify(data)
@@ -202,16 +224,23 @@ def api_check():
 @app.route("/api/fix", methods=["POST"])
 def api_fix():
     u = current_user()
-    if not u:
+    access, denied = auth.autofix_access(u)
+    if denied == "login_required":
         return jsonify(error="Автоисправление доступно после входа в аккаунт.", code="login_required"), 401
-    if u["must_change_password"]:
+    if denied == "password_change_required":
         return jsonify(error="Сначала смените временный пароль.", code="password_change_required"), 403
-    if not can_autofix():
-        return jsonify(error="Бесплатное автоисправление для вашего аккаунта не открыто.",
-                       code="payment_required"), 402
-    profile = request.form.get("profile", "vkr")
-    if profile not in PROFILES:
-        return jsonify(error="Неизвестный тип работы."), 400
+    if denied == "limit_reached":
+        return jsonify(error=f"В этом месяце использованы все {SUBSCRIPTION_LIMIT} исправлений по подписке. "
+                             f"Лимит обновится 1-го числа.", code="limit_reached"), 402
+    if denied:
+        return jsonify(error="Автоисправление для вашего аккаунта не оплачено.", code="payment_required"), 402
+    try:
+        profile, stds = _profile_from(request.form)
+    except ValueError as e:
+        return jsonify(error=str(e)), 400
+    if profile == "custom" and not standards.fixable(stds):
+        return jsonify(error="Автоисправление работает для ГОСТ 7.32-2017 и ГОСТ Р 7.0.100-2018.",
+                       code="fix_unsupported"), 400
 
     # Обычно файл уже лежит на сервере после проверки (upload_id). Если его нет
     # (прошёл час или сервер перезапускался) — клиент присылает файл заново.
@@ -232,17 +261,20 @@ def api_fix():
             f.save(src)
         try:
             # исправление — только по ГОСТ, поэтому отчёт «до» без дополнительных проверок вуза
-            before = run_normocontrol_cached(src, profile)
-            result = fix_docx(src, dst, PROFILES[profile], before=before)
+            before = run_normocontrol_cached(src, profile, standards=stds)
+            result = fix_docx(src, dst, resolve_profile(profile, stds), before=before)
         except Exception:
             app.logger.exception("fix failed")
             return jsonify(error="Не удалось исправить файл. Убедитесь, что он не повреждён и не защищён паролем."), 422
         base = os.path.splitext(filename)[0]
         download_id = store.put("fixed", f"{base}_исправлено.docx", src_path=dst)
 
+    if access == "subscription":
+        auth.record_autofix(u)
     payload = result.to_dict()
     payload["file"] = filename
     payload["download_id"] = download_id
+    payload["subscription"] = auth.subscription_state(u)
     return jsonify(payload)
 
 
@@ -265,15 +297,16 @@ def api_fixed_download(rid):
 @app.route("/api/annotated/<upload_id>")
 def api_annotated_download(upload_id):
     """Копия загруженной работы с подсветкой и примечаниями Word на местах замечаний."""
-    profile = request.args.get("profile", "vkr")
-    if profile not in PROFILES:
-        return jsonify(error="Неизвестный тип работы."), 400
+    try:
+        profile, stds = _profile_from(request.args)
+    except ValueError as e:
+        return jsonify(error=str(e)), 400
     entry = store.get(upload_id, "upload")
     if not entry:
         return jsonify(error="Файл не найден или устарел (хранится час). Проверьте работу заново."), 404
     path, name = entry
     try:
-        report = run_normocontrol_cached(path, profile, packs_for_check(current_user()))  # после проверки — из кеша
+        report = run_normocontrol_cached(path, profile, packs_for_check(current_user()), stds)  # из кеша
         with tempfile.TemporaryDirectory() as tmp:
             dst = os.path.join(tmp, "annotated.docx")
             annotate_docx(path, dst, report)

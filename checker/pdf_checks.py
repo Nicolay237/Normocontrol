@@ -57,6 +57,11 @@ def _is_tnr(fontname):
 def check_pdf(path, report, n):
     import pdfplumber
 
+    if not n["check_layout"]:
+        report.note("В PDF проверяется только оформление текста. Список источников и ссылки "
+                    "проверяются в файле Word (.docx).")
+        return
+
     report.note(
         "PDF не хранит структуру абзацев и стилей — показатели вычислены по координатам "
         "текста и являются оценочными. Для точной проверки загрузите .docx."
@@ -138,7 +143,7 @@ def check_pdf(path, report, n):
         # ── поля
         names = {"left": "левое", "right": "правое", "top": "верхнее", "bottom": "нижнее"}
         for side, hits in margin_hits.items():
-            if not hits:
+            if not hits or not n["check_margins"]:
                 continue
             lo, hi = n["margins_cm"][side]
             want = f"{_fmt(lo)} см" if lo == hi else f"от {_fmt(lo)} до {_fmt(hi)} см"
@@ -229,26 +234,31 @@ def check_pdf(path, report, n):
                                f"ожидается {_fmt(n['first_line_indent_cm'])} см")
         if len(cont_flags) >= 30:
             ratio = sum(cont_flags) / len(cont_flags)
-            if ratio < n["justify_min_ratio"]:
+            if ratio < n["justify_min_ratio"] and "left" not in n["body_align"]:
                 report.add("Документ (оценка по всем страницам)", "Выравнивание (оценка)",
                            f"только {round(ratio * 100)}% строк доходят до правого края — "
                            f"похоже на выравнивание по левому краю (ожидается по ширине)")
 
         # ── нумерация страниц
+        pos = n["page_number_pos"]
         if n["check_page_numbers"] and n_pages > 2:
             if len(page_numbers) < 0.5 * (n_pages - 1):
+                where = {"bottom": "внизу страницы по центру", "top": "вверху страницы по центру"}.get(pos)
                 report.add("Документ", "Нумерация страниц",
-                           "номера страниц не найдены (ожидаются внизу страницы по центру)")
-            else:
-                at_top = sum(1 for _, top in page_numbers.values() if top)
+                           "номера страниц не найдены" + (f" (ожидаются {where})" if where else ""))
+            elif pos != "any":
+                want_top = pos == "top"
+                wrong_side = sum(1 for _, top in page_numbers.values() if top != want_top)
                 off_center = sum(1 for cx, top in page_numbers.values()
-                                 if not top and abs(cx - page_dims[0] / 2) > 2.5 * CM_TO_PT)
-                if at_top > 0.5 * len(page_numbers):
+                                 if top == want_top and abs(cx - page_dims[0] / 2) > 2.5 * CM_TO_PT)
+                if wrong_side > 0.5 * len(page_numbers):
                     report.add("Документ", "Нумерация страниц",
+                               "номера страниц стоят внизу, а печатаются на середине верхнего поля" if want_top else
                                "номера страниц стоят вверху, по ГОСТ 7.32-2017 (п. 6.3.1) — внизу по центру")
                 elif off_center > 0.5 * len(page_numbers):
                     report.add("Документ", "Нумерация страниц",
-                               "номера страниц стоят не по центру нижней части страницы")
+                               "номера страниц стоят не по центру " + ("верхней" if want_top else "нижней") +
+                               " части страницы")
 
         # ── структура
         text_len = sum(len(l["text"]) for body, _, _ in all_lines_by_page.values() for l in body)

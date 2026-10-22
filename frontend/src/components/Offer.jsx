@@ -70,6 +70,25 @@ export default function Offer({ total, fixable }) {
         </div>
       )}
 
+      <div className="offer-sub">
+        <div>
+          <span className="title-medium">Подписка — {config.subscription_price ?? 249}&nbsp;₽ в месяц</span>
+          <p className="body-medium muted">
+            {config.subscription_limit ?? 100} автоисправлений в месяц: исправляйте работу после каждой правки
+            руководителя.
+          </p>
+        </div>
+        {user ? (
+          <md-outlined-button onClick={() => (config.payments_enabled ? null : setSoon(true))}>
+            Оформить подписку
+          </md-outlined-button>
+        ) : (
+          <Link to="/register" state={{ from: location.pathname }} className="link-btn">
+            <md-outlined-button>Оформить подписку</md-outlined-button>
+          </Link>
+        )}
+      </div>
+
       <p className="body-medium offer-uni">
         {user
           ? <>Вы преподаватель? Сообщите администратору свой логин <b>{user.login}</b> — он откроет бесплатный доступ.</>

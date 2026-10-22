@@ -11,12 +11,23 @@ from .report import Report, Issue, build_html_report, format_text_report
 from . import title_page as _tp
 
 
-def run_normocontrol(path, profile="vkr", title_page_template=None, packs=()):
+def resolve_profile(profile, standards=()):
+    """'vkr' | 'coursework' | 'custom' (+ набор ГОСТов, см. standards.py) или готовый словарь норм."""
+    if not isinstance(profile, str):
+        return profile
+    if profile == "custom":
+        from .standards import build_profile
+        return build_profile(standards)
+    return get_profile(profile)
+
+
+def run_normocontrol(path, profile="vkr", title_page_template=None, packs=(), standards=()):
     """
-    Проверяет файл по профилю норм ('vkr' | 'coursework') и возвращает Report.
-    packs — дополнительные проверки вуза [(ключ, настройки JSON)], см. checker/packs.
+    Проверяет файл по профилю норм ('vkr' | 'coursework' | 'custom') и возвращает Report.
+    packs — дополнительные проверки вуза [(ключ, настройки JSON)], см. checker/packs;
+    standards — выбранные ГОСТы для профиля 'custom', см. checker/standards.py.
     """
-    norms = get_profile(profile) if isinstance(profile, str) else profile
+    norms = resolve_profile(profile, standards)
     report = Report(profile_key=norms["key"], profile_title=norms["title"])
     ext = os.path.splitext(path)[1].lower()
     if ext == ".docx":
@@ -32,6 +43,10 @@ def run_normocontrol(path, profile="vkr", title_page_template=None, packs=()):
         check_pdf(path, report, norms)
     else:
         raise ValueError(f"Неподдерживаемый формат файла: '{ext}'. Ожидается .docx или .pdf")
+    if norms.get("strip_clauses"):
+        from .docx_checks import strip_gost732_refs
+        for issue in report.issues:
+            issue.message = strip_gost732_refs(issue.message)
     return report
 
 
@@ -51,16 +66,16 @@ def _file_hash(path):
     return h.hexdigest()
 
 
-def run_normocontrol_cached(path, profile="vkr", packs=()):
+def run_normocontrol_cached(path, profile="vkr", packs=(), standards=()):
     """Повторная проверка того же файла (побайтово) с тем же профилем и пакетами берётся из кеша."""
-    packs = tuple(packs)
-    key = (_file_hash(path), profile, os.path.splitext(path)[1].lower(), packs)
+    packs, standards = tuple(packs), tuple(standards)
+    key = (_file_hash(path), profile, os.path.splitext(path)[1].lower(), packs, standards)
     now = time.time()
     with _LOCK:
         hit = _CACHE.get(key)
         if hit and now - hit[1] < _TTL:
             return hit[0]
-    report = run_normocontrol(path, profile, packs=packs)
+    report = run_normocontrol(path, profile, packs=packs, standards=standards)
     with _LOCK:
         if len(_CACHE) >= _MAX:
             _CACHE.pop(min(_CACHE, key=lambda k: _CACHE[k][1]), None)

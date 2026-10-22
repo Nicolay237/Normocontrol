@@ -4,6 +4,8 @@
 
 Кто что может:
   * без входа и после обычной регистрации — проверка оформления бесплатно, автоисправление — за оплату;
+  * подписка (SUBSCRIPTION_PRICE ₽ в месяц) — SUBSCRIPTION_LIMIT автоисправлений за календарный месяц;
+    пока оплата не подключена, подписку выдаёт администратор в /admin;
   * пользователь с бесплатным доступом (его выдаёт администратор: учётки кафедры получают доступ
     сразу, зарегистрировавшимся его включают в /admin) — автоисправление бесплатно;
   * администратор — то же + страница управления учётками (/admin);
@@ -21,7 +23,7 @@ import time
 import secrets
 import logging
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 
 from flask import Blueprint, jsonify, request, session, g, abort
@@ -56,7 +58,20 @@ users = Table(
     Column("free_autofix", Boolean, nullable=False, default=False),
     # зарегистрировался сам (а не получил учётку от администратора)
     Column("registered", Boolean, nullable=False, default=False),
+    # подписка действует до этого момента (None — нет подписки)
+    Column("subscription_until", DateTime(timezone=True), nullable=True),
 )
+
+# автоисправления по подписке — для лимита в месяц
+autofix_log = Table(
+    "autofix_log", metadata,
+    Column("id", Integer, primary_key=True),
+    Column("user_id", Integer, nullable=False, index=True),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+
+SUBSCRIPTION_PRICE = int(os.environ.get("SUBSCRIPTION_PRICE", "249"))
+SUBSCRIPTION_LIMIT = int(os.environ.get("SUBSCRIPTION_LIMIT", "100"))
 
 # дополнительные проверки: кому какой пакет назначен и настройки пакетов (JSON поверх значений из кода)
 user_packs = Table(
@@ -73,7 +88,11 @@ check_packs = Table(
 
 # колонки, добавленные после первого запуска, и значение для уже существующих строк:
 # учётки, выданные администратором до появления регистрации, сохраняют бесплатный доступ
-_ADDED_COLUMNS = {"free_autofix": "TRUE", "registered": "FALSE"}
+_ADDED_COLUMNS = {
+    "free_autofix": "BOOLEAN NOT NULL DEFAULT TRUE",
+    "registered": "BOOLEAN NOT NULL DEFAULT FALSE",
+    "subscription_until": "{timestamp} NULL",
+}
 
 engine = None
 DB_IS_EPHEMERAL = False
@@ -127,9 +146,10 @@ def _add_missing_columns():
     """create_all не меняет существующие таблицы — новые колонки добавляем сами."""
     have = {c["name"] for c in inspect(engine).get_columns("users")}
     with engine.begin() as c:
-        for name, default in _ADDED_COLUMNS.items():
+        timestamp = "TIMESTAMP WITH TIME ZONE" if engine.dialect.name == "postgresql" else "DATETIME"
+        for name, ddl in _ADDED_COLUMNS.items():
             if name not in have:
-                c.execute(text(f"ALTER TABLE users ADD COLUMN {name} BOOLEAN NOT NULL DEFAULT {default}"))
+                c.execute(text(f"ALTER TABLE users ADD COLUMN {name} {ddl.format(timestamp=timestamp)}"))
                 log.info("в таблицу users добавлена колонка %s", name)
 
 
@@ -174,6 +194,7 @@ def public_user(u):
         return None
     return {"id": u["id"], "login": u["login"], "name": u["name"], "role": u["role"],
             "must_change_password": u["must_change_password"], "free_autofix": has_free_access(u),
+            "subscription": subscription_state(u),
             "packs": [{"key": k, "short": PACKS[k].short, "title": PACKS[k].title,
                        "profiles": list(PACKS[k].profiles)} for k in assigned_packs(u["id"])]}
 
@@ -201,10 +222,55 @@ def has_free_access(u):
     return bool(u and (u["role"] == "admin" or u["free_autofix"]))
 
 
+def _aware(dt):
+    # SQLite возвращает время без часового пояса — храним всегда UTC
+    return dt.replace(tzinfo=timezone.utc) if dt is not None and dt.tzinfo is None else dt
+
+
+def _month_start():
+    now = _now()
+    return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+
+def subscription_state(u):
+    """Подписка: активна ли, до какого числа, сколько исправлений использовано в этом месяце."""
+    until = _aware(u.get("subscription_until"))
+    active = bool(until and until > _now())
+    used = 0
+    if active:
+        with engine.connect() as c:
+            used = c.execute(select(func.count()).select_from(autofix_log).where(
+                autofix_log.c.user_id == u["id"], autofix_log.c.created_at >= _month_start())).scalar()
+    return {"active": active, "until": until.isoformat() if until else None,
+            "used": used, "limit": SUBSCRIPTION_LIMIT, "left": max(0, SUBSCRIPTION_LIMIT - used) if active else 0}
+
+
+def autofix_access(u):
+    """
+    Чем оплачено автоисправление: ("free", None) — бесплатный доступ, ("subscription", None) —
+    подписка с остатком лимита, (None, код) — недоступно: login_required, password_change_required,
+    limit_reached, payment_required.
+    """
+    if not u:
+        return None, "login_required"
+    if u["must_change_password"]:
+        return None, "password_change_required"
+    if has_free_access(u):
+        return "free", None
+    sub = subscription_state(u)
+    if sub["active"]:
+        return ("subscription", None) if sub["left"] > 0 else (None, "limit_reached")
+    return None, "payment_required"
+
+
+def record_autofix(u):
+    with engine.begin() as c:
+        c.execute(insert(autofix_log).values(user_id=u["id"], created_at=_now()))
+
+
 def can_autofix():
-    """Бесплатное автоисправление: доступ выдал администратор и временный пароль уже сменён."""
-    u = current_user()
-    return bool(u and not u["must_change_password"] and has_free_access(u))
+    """Автоисправление доступно: бесплатный доступ от администратора или подписка с остатком лимита."""
+    return autofix_access(current_user())[0] is not None
 
 
 def _check_origin():
@@ -419,6 +485,7 @@ def _admin_row(r, packs=None):
         "id": r["id"], "login": r["login"], "name": r["name"], "role": r["role"], "active": r["active"],
         "must_change_password": r["must_change_password"],
         "free_autofix": has_free_access(r), "registered": r["registered"],
+        "subscription_until": _aware(r["subscription_until"]).isoformat() if r["subscription_until"] else None,
         "created_at": r["created_at"].isoformat() if r["created_at"] else None,
         "last_login_at": r["last_login_at"].isoformat() if r["last_login_at"] else None,
     }
@@ -518,11 +585,17 @@ def admin_update(uid):
         values["role"] = data["role"]
     if "free_autofix" in data:
         values["free_autofix"] = bool(data["free_autofix"])
+    if "subscription_days" in data:   # пока оплата не подключена — подписку выдаёт администратор
+        days = data["subscription_days"]
+        if not isinstance(days, int) or isinstance(days, bool) or not 1 <= days <= 366:
+            return jsonify(error="Срок подписки — от 1 до 366 дней."), 400
+    if data.get("subscription_cancel"):
+        values["subscription_until"] = None
     packs = data.get("packs")
     if packs is not None:
         if not isinstance(packs, list) or any(k not in PACKS for k in packs):
             return jsonify(error="Неизвестная дополнительная проверка."), 400
-    if not values and packs is None:
+    if not values and packs is None and "subscription_days" not in data:
         return jsonify(error="Нечего менять."), 400
     with engine.begin() as c:
         row = c.execute(select(users).where(users.c.id == uid)).mappings().first()
@@ -530,6 +603,10 @@ def admin_update(uid):
             return jsonify(error="Пользователь не найден."), 404
         if values.get("active") is False or values.get("role") == "user":
             values["session_version"] = row["session_version"] + 1  # разлогинить сразу
+        if "subscription_days" in data:
+            # продление: с конца текущей подписки, если она ещё действует
+            start = max(_now(), _aware(row["subscription_until"]) or _now())
+            values["subscription_until"] = start + timedelta(days=data["subscription_days"])
         if values:
             c.execute(update(users).where(users.c.id == uid).values(**values))
         if packs is not None:

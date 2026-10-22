@@ -74,6 +74,18 @@ def _gost_body():
     return "".join(parts)
 
 
+def _standards_body():
+    from checker.standards import GROUPS, STANDARDS
+    parts = ["<h1>Проверка оформления работы по выбранным ГОСТам</h1>",
+             "<p>Отметьте стандарты из своей методички — сервис проверит работу только по ним. "
+             "Взаимоисключающие стандарты выбрать вместе нельзя.</p>"]
+    for g in GROUPS:
+        items = "".join(f"<li><b>{e(s['code'])}</b> — {e(s['title'])}. {e(s['about'])}</li>"
+                        for s in STANDARDS if s["group"] == g["key"])
+        parts.append(f"<h2>{e(g['title'])}</h2><p>{e(g['hint'])}</p><ul>{items}</ul>")
+    return "".join(parts)
+
+
 PAGES = {
     "/": {"path": "/",
           "title": "Нормоконтроль онлайн — проверка оформления ВКР и курсовых по ГОСТ 7.32-2017",
@@ -89,6 +101,12 @@ PAGES = {
         "coursework", "/coursework", "Проверка оформления курсовой работы по ГОСТ онлайн — Нормоконтроль",
         "Онлайн-проверка оформления курсовой работы и реферата по ГОСТ 7.32-2017: поля, шрифт 12–14 пт, "
         "интервалы, отступы, заголовки, рисунки и таблицы. Загрузите .docx или .pdf."),
+    "/standards": {"path": "/standards",
+                   "title": "Проверка по ГОСТ 7.32, ГОСТ Р 2.105, ГОСТ Р 7.0.11 и 7.0.100 онлайн — Нормоконтроль",
+                   "description": "Выберите стандарты из своей методички: ГОСТ 7.32-2017, ГОСТ Р 2.105-2019 (ЕСКД), "
+                                  "ГОСТ Р 7.0.11-2011 (диссертации), список литературы по ГОСТ Р 7.0.100-2018 или "
+                                  "ГОСТ 7.1-2003, ссылки по ГОСТ Р 7.0.5-2008.",
+                   "body": _standards_body},
     "/gost": {"path": "/gost", "title": f"{GOST['title']} — Нормоконтроль",
               "description": GOST["description"], "body": _gost_body},
 }
@@ -168,7 +186,7 @@ def robots_txt(base):
 
 def sitemap_xml(base, lastmod=None):
     lastmod = lastmod or date.today().isoformat()
-    prio = {"/": "1.0", "/vkr": "0.9", "/coursework": "0.9", "/gost": "0.8"}
+    prio = {"/": "1.0", "/vkr": "0.9", "/coursework": "0.9", "/standards": "0.8", "/gost": "0.8"}
     urls = "".join(
         f"<url><loc>{e(base + (p if p != '/' else '/'))}</loc><lastmod>{lastmod}</lastmod>"
         f"<priority>{prio.get(p, '0.5')}</priority></url>"

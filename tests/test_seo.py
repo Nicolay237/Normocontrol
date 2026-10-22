@@ -63,7 +63,8 @@ def test_robots_and_sitemap(monkeypatch):
     assert sm.mimetype == "application/xml"
     locs = re.findall(r"<loc>(.*?)</loc>", sm.data.decode())
     assert locs == ["https://normocontrol.site/", "https://normocontrol.site/vkr",
-                    "https://normocontrol.site/coursework", "https://normocontrol.site/gost"]
+                    "https://normocontrol.site/coursework", "https://normocontrol.site/standards",
+                    "https://normocontrol.site/gost"]
 
 
 def test_redirect_to_canonical_domain(monkeypatch):

@@ -70,19 +70,24 @@ function postForm(url, form, onProgress) {
   });
 }
 
-export function checkFile(file, profile, onProgress) {
+export const fetchStandards = () => fetch("/api/standards").then(parse);
+
+/** profile: vkr | coursework | custom; для custom — список выбранных ГОСТов (standards). */
+export function checkFile(file, profile, onProgress, standards) {
   const data = new FormData();
   data.append("file", file);
   data.append("profile", profile);
+  if (standards) data.append("standards", standards.join(","));
   return postForm("/api/check", data, onProgress);
 }
 
 /** Исправление: сначала по upload_id (файл уже на сервере), если он устарел — отправляем файл заново. */
-export async function fixFile({ uploadId, file, profile, onProgress }) {
+export async function fixFile({ uploadId, file, profile, standards, onProgress }) {
   if (uploadId) {
     const data = new FormData();
     data.append("upload_id", uploadId);
     data.append("profile", profile);
+    if (standards) data.append("standards", standards.join(","));
     try {
       return await postForm("/api/fix", data);
     } catch (e) {
@@ -92,9 +97,12 @@ export async function fixFile({ uploadId, file, profile, onProgress }) {
   const data = new FormData();
   data.append("file", file);
   data.append("profile", profile);
+  if (standards) data.append("standards", standards.join(","));
   return postForm("/api/fix", data, onProgress);
 }
 
 export const reportUrl = (id) => `/api/report/${id}`;
-export const annotatedUrl = (uploadId, profile) => `/api/annotated/${uploadId}?profile=${encodeURIComponent(profile)}`;
+export const annotatedUrl = (uploadId, profile, standards) =>
+  `/api/annotated/${uploadId}?profile=${encodeURIComponent(profile)}` +
+  (standards?.length ? `&standards=${encodeURIComponent(standards.join(","))}` : "");
 export const fixedUrl = (id) => `/api/fixed/${id}`;

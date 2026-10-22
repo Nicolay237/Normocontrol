@@ -7,6 +7,7 @@ import Login from "./pages/Login.jsx";
 import Account from "./pages/Account.jsx";
 import Admin from "./pages/Admin.jsx";
 import Gost from "./pages/Gost.jsx";
+import StandardsPage from "./pages/StandardsPage.jsx";
 import ThemeToggle from "./components/ThemeToggle.jsx";
 
 function UserButton() {
@@ -41,6 +42,7 @@ export default function App() {
           <nav className="tabs" aria-label="Тип работы">
             <NavLink to="/vkr" className="tab label-large">ВКР<md-ripple /></NavLink>
             <NavLink to="/coursework" className="tab label-large">Курсовая<md-ripple /></NavLink>
+            <NavLink to="/standards" className="tab label-large">ГОСТы<md-ripple /></NavLink>
           </nav>
           <span className="gost label-medium">ГОСТ 7.32&#8209;2017</span>
           <ThemeToggle />
@@ -54,6 +56,7 @@ export default function App() {
           <Route path="/vkr" element={<CheckPage profileKey="vkr" />} />
           <Route path="/coursework" element={<CheckPage profileKey="coursework" />} />
           <Route path="/gost" element={<Gost />} />
+          <Route path="/standards" element={<StandardsPage />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Login mode="register" />} />
           <Route path="/account" element={<Account />} />
@@ -67,6 +70,7 @@ export default function App() {
           <nav className="footer-links label-large" aria-label="Разделы сайта">
             <Link to="/vkr">Проверка ВКР</Link>
             <Link to="/coursework">Проверка курсовой</Link>
+            <Link to="/standards">Проверка по выбранным ГОСТам</Link>
             <Link to="/gost">Требования ГОСТ 7.32-2017</Link>
           </nav>
           <p>
