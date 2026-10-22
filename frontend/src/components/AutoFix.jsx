@@ -6,6 +6,7 @@ import { Icon, attr } from "../ui.jsx";
 import { IssueList, plural } from "./ReportView.jsx";
 import Progress from "./Progress.jsx";
 import Offer from "./Offer.jsx";
+import Celebration from "./Celebration.jsx";
 
 /** Карточка: иконка слева, весь контент — в одной колонке справа от неё. */
 function Card({ icon, done, children }) {
@@ -107,6 +108,7 @@ export default function AutoFix({ file, uploadId, profileKey, standards, total =
     const fixedCats = r.categories.filter((c) => c.fixed > 0);
     return (
       <Card icon="ok" done>
+        {r.issues_after === 0 && <Celebration key={r.download_id} />}
         <h2 className="title-large">
           Исправлено {r.total_fixed} {plural(r.total_fixed)} из {r.issues_before}
         </h2>

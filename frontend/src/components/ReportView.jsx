@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
 import { annotatedUrl, reportUrl } from "../api.js";
 import { Icon } from "../ui.jsx";
+import Celebration from "./Celebration.jsx";
 
 const PAGE = 30;
 const COLLAPSE_OVER = 20; // при большом числе замечаний разделы свёрнуты, обзор — в чипах
+// праздник показываем один раз на отчёт: при возврате на страницу с тем же отчётом — без салюта
+const celebrated = new Set();
 
 export function IssueList({ issues }) {
   return (
@@ -54,6 +57,8 @@ export default function ReportView({ report, children }) {
   const [open, setOpen] = useState(() => categories.map(() => total <= COLLAPSE_OVER));
 
   const [scrollTo, setScrollTo] = useState(null);
+  const [party, setParty] = useState(() => clean && !celebrated.has(report.report_id));
+  useEffect(() => { if (party) celebrated.add(report.report_id); }, [party, report.report_id]);
 
   // прокрутка к разделу — после того, как он раскрылся и страница перерисовалась
   useEffect(() => {
@@ -68,10 +73,23 @@ export default function ReportView({ report, children }) {
 
   return (
     <div className="report">
-      <div className="summary">
-        <span className={`summary-icon ${clean ? "ok" : "bad"}`}><Icon name={clean ? "ok" : "report"} /></span>
+      {party && <Celebration onDone={() => setParty(false)} />}
+      <div className={`summary${clean ? " summary-clean" : ""}`}>
+        {clean ? (
+          <button type="button" className="summary-icon ok" onClick={() => setParty(true)}
+                  title="Ещё раз салют!" aria-label="Повторить салют">
+            <Icon name="ok" />
+          </button>
+        ) : (
+          <span className="summary-icon bad"><Icon name="report" /></span>
+        )}
         <div className="summary-text">
           <h1 className="headline-small">{clean ? "Соответствует нормам" : `${total} ${plural(total)}`}</h1>
+          {clean && (
+            <p className="body-large summary-cheer">
+              Ни одного замечания — так получается очень редко. Поздравляем!
+            </p>
+          )}
           <div className="title-medium summary-file">{report.file}</div>
           <div className="body-medium summary-meta">{report.profile.title} · проверено {report.checked_at}</div>
           {!clean && (

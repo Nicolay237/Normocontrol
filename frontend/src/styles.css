@@ -470,6 +470,14 @@ textarea.field-input { resize: vertical; min-height: 120px; line-height: 24px; }
 .footer-legal { margin-top: 4px; }
 .check.consent { align-items: flex-start; }
 .check.consent input { margin-top: 2px; flex-shrink: 0; }
+.celebration { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 1000; }
+button.summary-icon { border: 0; cursor: pointer; font: inherit; transition: transform .2s; }
+button.summary-icon:hover { transform: scale(1.08) rotate(-6deg); }
+button.summary-icon:focus-visible { outline: 2px solid var(--md-sys-color-primary); outline-offset: 2px; }
+.summary-clean .summary-icon { animation: cheer-pop .6s cubic-bezier(.2, 1.6, .4, 1) both; }
+.summary-cheer { margin: 4px 0 0; color: var(--md-sys-color-tertiary); }
+@keyframes cheer-pop { from { transform: scale(.3); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .summary-clean .summary-icon { animation: none; } }
 .offer-sub {
   display: flex; gap: 16px; align-items: center; justify-content: space-between; flex-wrap: wrap;
   padding: 16px; border-radius: 16px; border: 1px solid var(--md-sys-color-outline-variant);
