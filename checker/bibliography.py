@@ -248,7 +248,7 @@ def _check_citations(chk, items, start, entries):
     first_seen = []          # номера в порядке первого упоминания
     any_cite = False
     for it in items[:start]:
-        if it["kind"] != "p" or it["role"] in ("toc", "skip"):
+        if it["kind"] != "p" or it["role"] in ("toc", "skip", "code", "front"):   # arr[1] в коде — не ссылка
             continue
         p = it["obj"]
         for m in CITE.finditer(chk.text(p)):

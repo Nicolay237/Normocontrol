@@ -22,6 +22,26 @@ ALT_FONTS = {
     "consolas", "lucida console", "cascadia code", "cascadia mono",
     "jetbrains mono", "fira code", "monaco", "menlo", "source code pro",
 }
+# Моноширинные шрифты — признак программного кода
+MONO_FONTS = {
+    "courier new", "courier", "consolas", "lucida console", "lucida sans typewriter", "cascadia code",
+    "cascadia mono", "jetbrains mono", "fira code", "fira mono", "monaco", "menlo", "source code pro",
+    "dejavu sans mono", "liberation mono", "pt mono", "roboto mono", "ubuntu mono", "inconsolata",
+    "noto sans mono", "sf mono",
+}
+CODE_STYLE_RE = re.compile(r"code|listing|листинг|preformatted|исходн|программ|\bкод", re.IGNORECASE)
+LISTING_RE = re.compile(r"^\s*(Листинг)(\.?)\s*(\d+(?:\.\d+)?|[А-ЯA-Z]\.\d+)(.*)$", re.IGNORECASE | re.DOTALL)
+# строка кода, набранная обычным шрифтом: ключевое слово в начале или много «программных» символов
+CODE_KEYWORD_RE = re.compile(
+    r"^\s*(def|class|import|from|return|elif|else|try|except|finally|with|lambda|async|await|"
+    r"public|private|protected|static|void|int|float|double|char|bool|boolean|string|var|let|const|"
+    r"function|using|namespace|#include|#define|package|func|fn|struct|enum|interface|new|"
+    r"SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|FROM|WHERE|print|printf|cout|cin|console\.|System\.|"
+    r"if\s*\(|for\s*\(|while\s*\(|switch\s*\(|catch\s*\(|if\s+.+:$|for\s+.+\s+in\s+.+:$|while\s+.+:$)",
+)
+CODE_CHARS = set("{}();=<>[]+*&|!")
+# библиографические записи и ссылки на сайты — не код, даже если в них много скобок и знаков
+NOT_CODE_RE = re.compile(r"https?://|www\.|URL\s*:|\s//\s|дата обращения", re.IGNORECASE)
 LIST_MARKERS = re.compile(r"^\s*([-–—•·*▪●○]|\d+[.)]|[а-яa-z]\))\s+", re.IGNORECASE)
 BULLET_MARKERS = re.compile(r"^\s*[•·*▪●○]\s*")
 TOC_TAIL_RE = re.compile(r"(?:[\t.…]{2,}|\t)\s*\d+\s*$")
@@ -238,6 +258,10 @@ class DocxChecker:
                     it["role"] = "figure_caption"
                     continue
 
+            if LISTING_RE.match(text) and len(text) < 300:
+                it["role"] = "listing_caption"
+                continue
+
             # заголовок, оформленный вручную (нумерованный, короткий, полностью жирный)
             if len(text) < 120 and NUMBERED_HEADING_RE.match(text) and not text.endswith(("!", "?")):
                 runs = self._runs(p)
@@ -249,8 +273,143 @@ class DocxChecker:
                 it["role"] = "list"
                 continue
             it["role"] = "body"
+        self.mark_code(items)
         mark_front_matter(items)
         return items
+
+    # ── программный код ──────────────────────────────────────────────────
+
+    def _mono(self, p):
+        """Абзац набран моноширинным шрифтом (не меньше 80% символов)."""
+        total = mono = 0
+        for r in self._runs(p):
+            n = len(r.text.strip())
+            total += n
+            if (self.res.font_name(r, p) or "").lower() in MONO_FONTS:
+                mono += n
+        return total > 0 and mono >= 0.8 * total
+
+    @staticmethod
+    def _code_like(text):
+        t = text.strip()
+        if not t or len(t) > 220 or NOT_CODE_RE.search(t):
+            return False
+        if CODE_KEYWORD_RE.match(t) or re.fullmatch(r"[{}()\[\];,]+", t):   # «{», «}», «});»
+            return True
+        symbols = sum(1 for ch in t if ch in CODE_CHARS)
+        cyr = sum(1 for ch in t if "а" <= ch.lower() <= "я")
+        letters = sum(1 for ch in t if ch.isalpha()) or 1
+        return symbols >= 2 and cyr / letters < 0.3 and (t.endswith((";", "{", "}", ")", ":")) or symbols >= 4)
+
+    def mark_code(self, items):
+        """
+        Листинги программ: абзацы моноширинным шрифтом или в стиле «код», а также подряд идущие
+        строки, похожие на код (≥ 3), получают роль "code" — к ним не применяются правила
+        основного текста. it["code_font"] — набран ли код моноширинным шрифтом.
+        """
+        textual = ("body", "list", "empty")
+        for it in items:
+            if it["kind"] == "p" and it["role"] in textual and it["role"] != "empty":
+                p = it["obj"]
+                if self._mono(p) or CODE_STYLE_RE.search(style_name(p) or ""):
+                    it["role"], it["code_font"] = "code", True
+        # код обычным шрифтом: не меньше трёх похожих на код строк подряд (пустые строки внутри — можно)
+        i = 0
+        while i < len(items):
+            j, lines = i, 0
+            while j < len(items) and items[j]["kind"] == "p" and items[j]["role"] in textual:
+                text = self.text(items[j]["obj"])
+                if text.strip():
+                    if not self._code_like(text):
+                        break
+                    lines += 1
+                j += 1
+            if lines >= 3:
+                for it in items[i:j]:
+                    if it["role"] != "empty" or (i < it["i"] < j - 1):
+                        it["role"], it["code_font"] = "code", False
+                i = j
+            else:
+                i += 1
+        # пустые строки внутри листинга — часть кода, а не «лишние пустые абзацы»
+        for k in range(1, len(items) - 1):
+            if items[k]["role"] == "empty":
+                prev = next((x for x in reversed(items[:k]) if x["role"] != "empty"), None)
+                nxt = next((x for x in items[k + 1:] if x["role"] != "empty"), None)
+                if prev and nxt and prev["role"] == "code" and nxt["role"] == "code":
+                    items[k]["role"], items[k]["code_font"] = "code", prev.get("code_font", True)
+        # многие методички разрешают подписывать код как рисунок: «Рисунок N – …» под листингом
+        for block in self.code_blocks(items):
+            k = block[-1]["i"] + 1
+            while k < len(items) and items[k]["role"] == "empty":
+                k += 1
+            if k < len(items) and items[k]["role"] == "body" and FIG_RE.match(self.text(items[k]["obj"]).strip())                     and len(self.text(items[k]["obj"])) < 300:
+                items[k]["role"] = "figure_caption"
+
+    def code_blocks(self, items):
+        """Листинги: списки подряд идущих элементов с ролью "code"."""
+        blocks, cur = [], []
+        for it in items:
+            if it["role"] == "code":
+                cur.append(it)
+            elif cur:
+                blocks.append(cur)
+                cur = []
+        if cur:
+            blocks.append(cur)
+        return blocks
+
+    def check_code(self, items):
+        """
+        Требования методичек к листингам (в ГОСТ 7.32 отдельного пункта нет): моноширинный шрифт
+        10–12 пт, интервал не больше полуторного, выравнивание по левому краю, подпись
+        «Листинг N – Название» над кодом; длинный код — в приложение.
+        """
+        res, cat = self.res, "Листинги"
+        appendix_from = next((it["i"] for it in items if it["role"] == "structural"
+                              and self.text(it["obj"]).strip().upper().startswith("ПРИЛОЖЕНИ")), None)
+        for block in self.code_blocks(items):
+            lines = [it for it in block if self.text(it["obj"]).strip()]
+            if not lines:
+                continue
+            first = lines[0]["obj"]
+            loc = self._loc(first, "листинг, абзац")
+            in_appendix = appendix_from is not None and block[0]["i"] > appendix_from
+            if not any(it.get("code_font") for it in lines):
+                fonts = {res.font_name(r, first) for r in self._runs(first)} - {None}
+                self.report.add(loc, cat, "похоже на программный код, набранный шрифтом "
+                                          f"«{', '.join(sorted(fonts)) or 'основного текста'}» — для листингов "
+                                          "используют моноширинный шрифт (Courier New, Consolas)")
+            sizes = {res.font_size(r, it["obj"]) for it in lines for r in self._runs(it["obj"])} - {None}
+            if sizes and (min(sizes) < 9.5 or max(sizes) > 14.5):
+                self.report.add(loc, cat, f"кегль листинга {_fmt(min(sizes) if min(sizes) < 9.5 else max(sizes))} пт "
+                                          "— обычно 10–12 пт")
+            if any(res.alignment(it["obj"]) in ("justify", "center") for it in lines):
+                self.report.add(loc, cat, "листинг выравнивается по левому краю, а не по ширине или центру")
+            if any(res.first_line_indent_cm(it["obj"], 12) > self.n["first_line_indent_tolerance_cm"] for it in lines):
+                self.report.add(loc, cat, "у строк листинга не должно быть абзацного отступа — "
+                                          "вложенность в коде показывают пробелами")
+            spacing = [res.line_spacing(it["obj"]) for it in lines]
+            if any(kind == "ratio" and v > 1.5 + self.n["line_spacing_tolerance"] for kind, v in spacing):
+                self.report.add(loc, cat, "межстрочный интервал листинга — одинарный (допускается полуторный)")
+            # подпись: ближайший непустой абзац над кодом
+            k = block[0]["i"] - 1
+            while k >= 0 and items[k]["role"] == "empty":
+                k -= 1
+            has_caption = k >= 0 and items[k]["role"] == "listing_caption"
+            k = block[-1]["i"] + 1
+            while k < len(items) and items[k]["role"] == "empty":
+                k += 1
+            caption_below = k < len(items) and items[k]["role"] == "listing_caption"
+            figure_below = k < len(items) and items[k]["role"] == "figure_caption"
+            if caption_below and not has_caption:
+                self.report.add(self._loc(items[k]["obj"]), cat, "подпись «Листинг N – Название» ставится над кодом, а не под ним")
+            elif not (has_caption or figure_below) and len(lines) >= 3 and not in_appendix:
+                self.report.add(loc, cat, "у листинга нет подписи: «Листинг N – Название» над кодом "
+                                          "(или «Рисунок N – Название» под ним, если так требует методичка)")
+            if len(lines) >= 60 and not in_appendix:
+                self.report.add(loc, cat, f"длинный листинг ({len(lines)} строк) лучше вынести в приложение, "
+                                          "а в тексте оставить ключевой фрагмент")
 
     # ── запуск ───────────────────────────────────────────────────────────
 
@@ -273,6 +432,7 @@ class DocxChecker:
             self.check_headings(items)
             self.check_toc(items)
             self.check_captions(items)
+            self.check_code(items)
             self.check_tables(items)
             self.check_structure(items)
             self.check_new_page(items)
@@ -286,7 +446,7 @@ class DocxChecker:
             check_typography(
                 [(self._loc(it["obj"]), self.text(it["obj"]),
                   "bib" if id(it["obj"]._p) in bib_ids else it["role"], has_page_break(it["obj"]))
-                 for it in items if it["kind"] == "p" and it["role"] not in ("toc", "skip", "front")],
+                 for it in items if it["kind"] == "p" and it["role"] not in ("toc", "skip", "front", "code")],
                 self.report,
             )
         for issue in self.report.issues:
@@ -629,7 +789,8 @@ class DocxChecker:
 
     def check_captions(self, items):
         for role, label, rx, full in (("figure_caption", "Рисунок", FIG_RE, "Рисунок"),
-                                       ("table_caption", "Таблица", TAB_RE, "Таблица")):
+                                       ("table_caption", "Таблица", TAB_RE, "Таблица"),
+                                       ("listing_caption", "Листинг", LISTING_RE, "Листинг")):
             expected_next = 1
             for it in items:
                 if it["role"] != role:

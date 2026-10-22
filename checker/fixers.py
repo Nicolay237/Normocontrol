@@ -51,13 +51,15 @@ FIXABLE_BIB_MESSAGES = (
     "место издания и издательство разделяются", "вместо дефиса с пробелами", "после знака «№»",
     "перед «URL:» ставятся точка и тире",
 )
+FIXABLE_CODE_MESSAGES = ("листинг выравнивается по левому краю", "у строк листинга не должно быть абзацного отступа")
 
 
 def estimate_fixable(report):
     """Сколько замечаний отчёта исправитель, скорее всего, устранит (оценка до запуска)."""
     return sum(1 for i in report.issues
                if i.category in FIXABLE_CATEGORIES
-               or (i.category == "Список источников" and i.message.startswith(FIXABLE_BIB_MESSAGES)))
+               or (i.category == "Список источников" and i.message.startswith(FIXABLE_BIB_MESSAGES))
+               or (i.category == "Листинги" and i.message.startswith(FIXABLE_CODE_MESSAGES)))
 
 
 @dataclass
@@ -254,6 +256,14 @@ class _Fixer:
                 self.fix_heading(p, role)
             elif role == "toc":
                 self.fix_toc(p)
+            elif role == "code":
+                # листинг: шрифт, отступы и интервалы кода не трогаем — только выравнивание по левому краю
+                if self.res.alignment(p) in ("justify", "center"):
+                    p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                    self.done("Листинг выровнен по левому краю")
+                if self.res.first_line_indent_cm(p, 12) > self.n["first_line_indent_tolerance_cm"]:
+                    _set_first_line(p, 0)
+                    self.done("Убран абзацный отступ в листинге")
             if role not in ("empty", "image"):
                 prev_formula = False
             if role in ("body", "list", "heading", "structural", "figure_caption", "table_caption"):
