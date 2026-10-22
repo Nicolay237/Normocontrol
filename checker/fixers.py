@@ -238,7 +238,8 @@ class _Fixer:
         prev_formula = False
         for it in items:
             if it["kind"] == "tbl":
-                self.fix_table(it["obj"])
+                if it["role"] != "front":   # таблица подписей на титульном листе — по своей форме
+                    self.fix_table(it["obj"])
                 prev_formula = False
                 continue
             p, role = it["obj"], it["role"]

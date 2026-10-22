@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
-import { adminBulk, adminCreate, adminDelete, adminReset, adminUpdate, adminUsers } from "../api.js";
+import {
+  adminBulk, adminCreate, adminDelete, adminPackSettings, adminPacks, adminReset, adminUpdate, adminUsers,
+} from "../api.js";
 import { useSession } from "../ProfilesContext.jsx";
 import { Field, Icon, attr, submitOnEnter } from "../ui.jsx";
 
@@ -49,7 +51,71 @@ function Credentials({ items, onClose }) {
   );
 }
 
-function UserRow({ u, me, onChanged, onCredentials }) {
+/** Дополнительная проверка вуза: описание, сколько людей с доступом и настройки (JSON). */
+function PackCard({ pack, onSaved }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState(() => JSON.stringify(pack.settings, null, 2));
+  const [state, setState] = useState({ busy: false, error: null, saved: false });
+  useEffect(() => setText(JSON.stringify(pack.settings, null, 2)), [pack]);
+
+  async function save(settings) {
+    setState({ busy: true, error: null, saved: false });
+    try {
+      const value = settings === undefined ? JSON.parse(text) : settings;
+      onSaved((await adminPackSettings(pack.key, value)).pack);
+      setState({ busy: false, error: null, saved: true });
+    } catch (e) {
+      const msg = e instanceof SyntaxError ? "Это не JSON: проверьте кавычки и запятые." : e.message;
+      setState({ busy: false, error: msg, saved: false });
+    }
+  }
+
+  return (
+    <li className="pack-card">
+      <div className="pack-head">
+        <Icon name="check" />
+        <div>
+          <h3 className="title-medium">{pack.title}</h3>
+          <p className="body-medium muted">{pack.description}</p>
+          <p className="label-medium muted">
+            Включена у {pack.users} · только для ВКР{pack.customized && " · настройки изменены"}
+          </p>
+        </div>
+        <md-text-button onClick={() => setOpen(!open)}>
+          <Icon name="settings" slot="icon" />
+          {open ? "Скрыть" : "Настройки"}
+        </md-text-button>
+      </div>
+      {open && (
+        <div className="pack-settings">
+          <textarea className="field-input code body-medium" rows={14} spellCheck={false} value={text}
+                    aria-label={`Настройки: ${pack.title}`}
+                    onChange={(e) => { setText(e.target.value); setState({ ...state, saved: false }); }} />
+          {state.error && (
+            <div className="banner banner-error body-medium" role="alert"><Icon name="error" /><span>{state.error}</span></div>
+          )}
+          {state.saved && (
+            <div className="banner banner-ok body-medium" role="status"><Icon name="ok" /><span>Сохранено — действует со следующей проверки.</span></div>
+          )}
+          <div className="row-actions">
+            <md-filled-tonal-button onClick={() => save()} disabled={attr(state.busy)}>
+              <Icon name="ok" slot="icon" />
+              Сохранить
+            </md-filled-tonal-button>
+            {pack.customized && (
+              <md-text-button onClick={() => window.confirm("Вернуть настройки по умолчанию?") && save(null)}>
+                <Icon name="reset" slot="icon" />
+                По умолчанию
+              </md-text-button>
+            )}
+          </div>
+        </div>
+      )}
+    </li>
+  );
+}
+
+function UserRow({ u, me, packs, onChanged, onCredentials }) {
   const [busy, setBusy] = useState(false);
   async function act(fn, confirmText) {
     if (confirmText && !window.confirm(confirmText)) return;
@@ -70,6 +136,25 @@ function UserRow({ u, me, onChanged, onCredentials }) {
           {u.free_autofix && u.role !== "admin" && <span className="tag tag-ok">бесплатно</span>}
         </span>
         <span className="label-medium muted">последний вход: {fmtDate(u.last_login_at)}</span>
+        {packs.length > 0 && (
+          <span className="pack-toggles">
+            {packs.map((p) => {
+              const on = u.packs.includes(p.key);
+              return (
+                <button key={p.key} type="button" className={`pack-toggle label-medium${on ? " on" : ""}`}
+                        aria-pressed={on} disabled={busy}
+                        title={on ? `Выключить: ${p.title}` : `Включить: ${p.title}`}
+                        onClick={() => act(async () => {
+                          const next = on ? u.packs.filter((k) => k !== p.key) : [...u.packs, p.key];
+                          await adminUpdate(u.id, { packs: next });
+                          onChanged();
+                        })}>
+                  <Icon name={on ? "tick" : "plus"} size={16} /> Проверка {p.short}
+                </button>
+              );
+            })}
+          </span>
+        )}
       </div>
       <div className="user-actions">
         {u.role !== "admin" && (
@@ -115,12 +200,18 @@ export default function Admin() {
   const [formError, setFormError] = useState(null);
   const [creds, setCreds] = useState(null);
   const [q, setQ] = useState("");
+  const [packs, setPacks] = useState([]);
 
   const load = () => adminUsers()
     .then((r) => setList({ users: r.users, ephemeral: r.db_ephemeral, error: null }))
     .catch((e) => setList({ users: null, ephemeral: false, error: e.message }));
 
-  useEffect(() => { document.title = "Учётные записи — Нормоконтроль"; if (user?.role === "admin") load(); }, [user]);
+  const loadPacks = () => adminPacks().then((r) => setPacks(r.packs)).catch(() => setPacks([]));
+
+  useEffect(() => {
+    document.title = "Учётные записи — Нормоконтроль";
+    if (user?.role === "admin") { load(); loadPacks(); }
+  }, [user]);
 
   if (!user) return <Navigate to="/login" replace state={{ from: "/admin" }} />;
   if (user.role !== "admin") return <Navigate to="/account" replace />;
@@ -221,10 +312,28 @@ export default function Admin() {
       {list.users && (
         <ul className="user-list">
           {filtered.map((u) => (
-            <UserRow key={u.id} u={u} me={user} onChanged={load} onCredentials={setCreds} />
+            <UserRow key={u.id} u={u} me={user} packs={packs} onChanged={() => { load(); loadPacks(); }}
+                     onCredentials={setCreds} />
           ))}
           {!filtered.length && <li className="body-medium muted empty">Никого не нашли.</li>}
         </ul>
+      )}
+
+      {packs.length > 0 && (
+        <>
+          <div className="list-head">
+            <h2 className="title-large">Дополнительные проверки</h2>
+          </div>
+          <p className="body-medium muted supporting">
+            Требования вуза сверх ГОСТ. Включаются каждому пользователю отдельно — кнопкой «Проверка …» в списке выше.
+          </p>
+          <ul className="pack-list">
+            {packs.map((p) => (
+              <PackCard key={p.key} pack={p}
+                        onSaved={(next) => setPacks((all) => all.map((x) => (x.key === next.key ? next : x)))} />
+            ))}
+          </ul>
+        </>
       )}
     </section>
   );

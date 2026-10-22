@@ -33,6 +33,9 @@ export const adminCreate = (data) => api("/api/admin/users", { method: "POST", b
 export const adminBulk = (names) => api("/api/admin/users/bulk", { method: "POST", body: { names } });
 export const adminReset = (id) => api(`/api/admin/users/${id}/reset`, { method: "POST", body: {} });
 export const adminUpdate = (id, data) => api(`/api/admin/users/${id}`, { method: "PATCH", body: data });
+export const adminPacks = () => api("/api/admin/packs");
+export const adminPackSettings = (key, settings) =>
+  api(`/api/admin/packs/${key}`, { method: "PUT", body: { settings } });
 export const adminDelete = (id) => api(`/api/admin/users/${id}`, { method: "DELETE" });
 
 /**

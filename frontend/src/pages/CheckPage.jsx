@@ -17,6 +17,8 @@ const lastResult = new Map();
 export default function CheckPage({ profileKey }) {
   const { profiles, error: profilesError, config } = useProfiles();
   const profile = profiles?.[profileKey];
+  // дополнительные проверки вуза, которые администратор включил этому пользователю
+  const packs = (config.user?.packs || []).filter((p) => p.profiles.includes(profileKey));
   const [state, setStateRaw] = useState(() => lastResult.get(profileKey) || IDLE);
 
   const setState = (next) => setStateRaw((prev) => {
@@ -88,13 +90,23 @@ export default function CheckPage({ profileKey }) {
           ))}
         </ul>
       </header>
-      <div className="banner banner-info body-medium">
-        <Icon name="hint" />
-        <span>
-          <b>Загружайте только текст самой работы</b> — от «Введения» до приложений.
-          Титульный лист, задание, отзыв и рецензию лучше убрать: они оформляются по другим правилам.
-        </span>
-      </div>
+      {packs.length > 0 ? (
+        <div className="banner banner-ok body-medium">
+          <Icon name="check" />
+          <span>
+            <b>Для вас включена дополнительная проверка: {packs.map((p) => p.title).join("; ")}.</b>{" "}
+            Загружайте работу целиком — вместе с титульным листом и заданием.
+          </span>
+        </div>
+      ) : (
+        <div className="banner banner-info body-medium">
+          <Icon name="hint" />
+          <span>
+            <b>Загружайте работу целиком.</b> Титульный лист и задание оформляются по своим формам —
+            правила основного текста к ним не применяются. Отзыв и рецензию лучше убрать.
+          </span>
+        </div>
+      )}
 
       {state.phase === "loading" ? (
         <Progress

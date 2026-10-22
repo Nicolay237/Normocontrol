@@ -11,8 +11,11 @@ from .report import Report, Issue, build_html_report, format_text_report
 from . import title_page as _tp
 
 
-def run_normocontrol(path, profile="vkr", title_page_template=None):
-    """Проверяет файл по профилю норм ('vkr' | 'coursework') и возвращает Report."""
+def run_normocontrol(path, profile="vkr", title_page_template=None, packs=()):
+    """
+    Проверяет файл по профилю норм ('vkr' | 'coursework') и возвращает Report.
+    packs — дополнительные проверки вуза [(ключ, настройки JSON)], см. checker/packs.
+    """
     norms = get_profile(profile) if isinstance(profile, str) else profile
     report = Report(profile_key=norms["key"], profile_title=norms["title"])
     ext = os.path.splitext(path)[1].lower()
@@ -20,7 +23,7 @@ def run_normocontrol(path, profile="vkr", title_page_template=None):
         from docx import Document
         from .docx_checks import check_docx
         doc = Document(path)
-        check_docx(doc, report, norms)
+        check_docx(doc, report, norms, packs)
         if title_page_template is None and _tp.TITLE_PAGE_TEMPLATE_PATH:
             title_page_template = _tp.load_title_page_template(_tp.TITLE_PAGE_TEMPLATE_PATH)
         _tp.check_title_page(doc, title_page_template, report)
@@ -48,15 +51,16 @@ def _file_hash(path):
     return h.hexdigest()
 
 
-def run_normocontrol_cached(path, profile="vkr"):
-    """Повторная проверка того же файла (побайтово) с тем же профилем берётся из кеша."""
-    key = (_file_hash(path), profile, os.path.splitext(path)[1].lower())
+def run_normocontrol_cached(path, profile="vkr", packs=()):
+    """Повторная проверка того же файла (побайтово) с тем же профилем и пакетами берётся из кеша."""
+    packs = tuple(packs)
+    key = (_file_hash(path), profile, os.path.splitext(path)[1].lower(), packs)
     now = time.time()
     with _LOCK:
         hit = _CACHE.get(key)
         if hit and now - hit[1] < _TTL:
             return hit[0]
-    report = run_normocontrol(path, profile)
+    report = run_normocontrol(path, profile, packs=packs)
     with _LOCK:
         if len(_CACHE) >= _MAX:
             _CACHE.pop(min(_CACHE, key=lambda k: _CACHE[k][1]), None)

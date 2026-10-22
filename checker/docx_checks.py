@@ -88,9 +88,31 @@ def _fmt(v):
     return f"{v:g}".replace(".", ",")
 
 
+def mark_front_matter(items):
+    """
+    Титульный лист, задание и прочее до первого структурного элемента (АННОТАЦИЯ, РЕФЕРАТ,
+    СОДЕРЖАНИЕ, ВВЕДЕНИЕ…) оформляются по своим формам: центрированные строки, мелкий кегль,
+    пустые строки для подписей. Правила основного текста к ним не применяются — помечаем
+    такие блоки ролью "front" (исходная роль остаётся в "front_role").
+    """
+    first = next((k for k, it in enumerate(items) if it["role"] == "structural"), None)
+    if not first:
+        return
+    # если перед первым найденным структурным элементом уже идут разделы или сплошной текст,
+    # значит, ВВЕДЕНИЕ и др. просто не распознаны — это не титульный лист
+    before = items[:first]
+    if any(it["role"] == "heading" for it in before):
+        return
+    if sum(1 for it in before if it["role"] == "body" and len(it["obj"].text) > 400) > 2:
+        return
+    for it in items[:first]:
+        it["front_role"], it["role"] = it["role"], "front"
+
+
 class DocxChecker:
-    def __init__(self, doc, report, profile):
+    def __init__(self, doc, report, profile, packs=()):
         self.doc, self.report, self.n = doc, report, profile
+        self.packs = packs   # дополнительные проверки вуза: [(ключ, настройки JSON)]
         self.res = Resolver(doc)
         # p.text / run.text в python-docx каждый раз выполняют xpath — на ВКР это тысячи
         # вызовов и основная часть времени. Документ при проверке не меняется, кешируем.
@@ -212,6 +234,7 @@ class DocxChecker:
                 it["role"] = "list"
                 continue
             it["role"] = "body"
+        mark_front_matter(items)
         return items
 
     # ── запуск ───────────────────────────────────────────────────────────
@@ -237,12 +260,15 @@ class DocxChecker:
         self.check_structure(items)
         self.check_new_page(items)
         check_bibliography(self, items)
+        if self.packs:
+            from .packs import run_packs
+            run_packs(self, items, self.packs)
         # записи списка источников: по ГОСТ Р 7.0.100 в них « : », « / », « ; » — с пробелами
         bib_ids = {id(p._p) for p in find_bib_section(self, items)[1]}
         check_typography(
             [(self._loc(it["obj"]), self.text(it["obj"]),
               "bib" if id(it["obj"]._p) in bib_ids else it["role"], has_page_break(it["obj"]))
-             for it in items if it["kind"] == "p" and it["role"] not in ("toc", "skip")],
+             for it in items if it["kind"] == "p" and it["role"] not in ("toc", "skip", "front")],
             self.report,
         )
         for issue in self.report.issues:
@@ -613,7 +639,7 @@ class DocxChecker:
         n, res = self.n, self.res
         ti = 0
         for it in items:
-            if it["kind"] != "tbl":
+            if it["kind"] != "tbl" or it["role"] == "front":
                 continue
             ti += 1
             seen_cells = set()
@@ -649,8 +675,8 @@ class DocxChecker:
                                 f"(или он оформлен не как заголовок)")
 
 
-def check_docx(doc_or_path, report, profile):
+def check_docx(doc_or_path, report, profile, packs=()):
     doc = Document(doc_or_path) if isinstance(doc_or_path, (str, bytes)) or hasattr(doc_or_path, "__fspath__") \
         else doc_or_path
-    DocxChecker(doc, report, profile).run()
+    DocxChecker(doc, report, profile, packs).run()
     return doc

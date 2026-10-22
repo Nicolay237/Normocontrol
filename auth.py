@@ -6,7 +6,9 @@
   * без входа и после обычной регистрации — проверка оформления бесплатно, автоисправление — за оплату;
   * пользователь с бесплатным доступом (его выдаёт администратор: учётки кафедры получают доступ
     сразу, зарегистрировавшимся его включают в /admin) — автоисправление бесплатно;
-  * администратор — то же + страница управления учётками (/admin).
+  * администратор — то же + страница управления учётками (/admin);
+  * дополнительные проверки вуза (checker/packs) — только тем, кому их назначил администратор
+    (таблица user_packs); настройки пакетов — в таблице check_packs.
 
 База: DATABASE_URL (PostgreSQL на Render/Neon), без неё — SQLite-файл в папке instance/
 (годится для разработки; на Render без постоянного диска такой файл стирается при деплое).
@@ -24,10 +26,12 @@ from functools import wraps
 
 from flask import Blueprint, jsonify, request, session, g, abort
 from sqlalchemy import (
-    MetaData, Table, Column, Integer, String, Boolean, DateTime, create_engine, select, insert,
+    MetaData, Table, Column, Integer, String, Boolean, DateTime, Text, create_engine, select, insert,
     update, delete, func, inspect, text,
 )
 from werkzeug.security import generate_password_hash, check_password_hash
+
+from checker.packs import PACKS, settings_for
 
 log = logging.getLogger("normocontrol.auth")
 bp = Blueprint("auth", __name__)
@@ -52,6 +56,19 @@ users = Table(
     Column("free_autofix", Boolean, nullable=False, default=False),
     # зарегистрировался сам (а не получил учётку от администратора)
     Column("registered", Boolean, nullable=False, default=False),
+)
+
+# дополнительные проверки: кому какой пакет назначен и настройки пакетов (JSON поверх значений из кода)
+user_packs = Table(
+    "user_packs", metadata,
+    Column("user_id", Integer, primary_key=True),
+    Column("pack_key", String(32), primary_key=True),
+)
+check_packs = Table(
+    "check_packs", metadata,
+    Column("key", String(32), primary_key=True),
+    Column("settings", Text, nullable=False, default="{}"),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
 )
 
 # колонки, добавленные после первого запуска, и значение для уже существующих строк:
@@ -156,7 +173,28 @@ def public_user(u):
     if not u:
         return None
     return {"id": u["id"], "login": u["login"], "name": u["name"], "role": u["role"],
-            "must_change_password": u["must_change_password"], "free_autofix": has_free_access(u)}
+            "must_change_password": u["must_change_password"], "free_autofix": has_free_access(u),
+            "packs": [{"key": k, "short": PACKS[k].short, "title": PACKS[k].title,
+                       "profiles": list(PACKS[k].profiles)} for k in assigned_packs(u["id"])]}
+
+
+def assigned_packs(uid):
+    with engine.connect() as c:
+        keys = c.execute(select(user_packs.c.pack_key).where(user_packs.c.user_id == uid)).scalars().all()
+    return [k for k in sorted(keys) if k in PACKS]
+
+
+def packs_for_check(u):
+    """Дополнительные проверки текущего пользователя: [(ключ, настройки JSON)] — для run_normocontrol."""
+    if not u or u["must_change_password"]:
+        return ()
+    keys = assigned_packs(u["id"])
+    if not keys:
+        return ()
+    with engine.connect() as c:
+        saved = dict(c.execute(select(check_packs.c.key, check_packs.c.settings)
+                               .where(check_packs.c.key.in_(keys))).all())
+    return tuple((k, saved.get(k) or "{}") for k in keys)
 
 
 def has_free_access(u):
@@ -375,8 +413,9 @@ def change_password():
 
 # ── API: администрирование ────────────────────────────────────────────────
 
-def _admin_row(r):
+def _admin_row(r, packs=None):
     return {
+        "packs": packs if packs is not None else assigned_packs(r["id"]),
         "id": r["id"], "login": r["login"], "name": r["name"], "role": r["role"], "active": r["active"],
         "must_change_password": r["must_change_password"],
         "free_autofix": has_free_access(r), "registered": r["registered"],
@@ -390,7 +429,12 @@ def _admin_row(r):
 def admin_list():
     with engine.connect() as c:
         rows = c.execute(select(users).order_by(func.lower(users.c.name), users.c.login)).mappings().all()
-    return jsonify(users=[_admin_row(r) for r in rows], db_ephemeral=DB_IS_EPHEMERAL)
+        assigned = {}
+        for uid, key in c.execute(select(user_packs.c.user_id, user_packs.c.pack_key)).all():
+            if key in PACKS:
+                assigned.setdefault(uid, []).append(key)
+    return jsonify(users=[_admin_row(r, sorted(assigned.get(r["id"], []))) for r in rows],
+                   db_ephemeral=DB_IS_EPHEMERAL)
 
 
 def _create(c, name, login_=None, role="user"):
@@ -474,7 +518,11 @@ def admin_update(uid):
         values["role"] = data["role"]
     if "free_autofix" in data:
         values["free_autofix"] = bool(data["free_autofix"])
-    if not values:
+    packs = data.get("packs")
+    if packs is not None:
+        if not isinstance(packs, list) or any(k not in PACKS for k in packs):
+            return jsonify(error="Неизвестная дополнительная проверка."), 400
+    if not values and packs is None:
         return jsonify(error="Нечего менять."), 400
     with engine.begin() as c:
         row = c.execute(select(users).where(users.c.id == uid)).mappings().first()
@@ -482,7 +530,12 @@ def admin_update(uid):
             return jsonify(error="Пользователь не найден."), 404
         if values.get("active") is False or values.get("role") == "user":
             values["session_version"] = row["session_version"] + 1  # разлогинить сразу
-        c.execute(update(users).where(users.c.id == uid).values(**values))
+        if values:
+            c.execute(update(users).where(users.c.id == uid).values(**values))
+        if packs is not None:
+            c.execute(delete(user_packs).where(user_packs.c.user_id == uid))
+            for k in sorted(set(packs)):
+                c.execute(insert(user_packs).values(user_id=uid, pack_key=k))
         row = c.execute(select(users).where(users.c.id == uid)).mappings().first()
     return jsonify(user=_admin_row(row))
 
@@ -493,7 +546,61 @@ def admin_delete(uid):
     if uid == current_user()["id"]:
         return jsonify(error="Нельзя удалить самого себя."), 400
     with engine.begin() as c:
+        c.execute(delete(user_packs).where(user_packs.c.user_id == uid))
         res = c.execute(delete(users).where(users.c.id == uid))
     if not res.rowcount:
         return jsonify(error="Пользователь не найден."), 404
     return jsonify(ok=True)
+
+# ── API: дополнительные проверки ──────────────────────────────────────────
+
+def _pack_row(c, key):
+    pack = PACKS[key]
+    raw = c.execute(select(check_packs.c.settings).where(check_packs.c.key == key)).scalar()
+    used = c.execute(select(func.count()).select_from(user_packs).where(user_packs.c.pack_key == key)).scalar()
+    return {"key": key, "title": pack.title, "short": pack.short, "description": pack.description,
+            "profiles": list(pack.profiles), "settings": settings_for(key, raw), "defaults": pack.defaults,
+            "customized": bool(raw and raw != "{}"), "users": used}
+
+
+@bp.get("/api/admin/packs")
+@admin_required
+def admin_packs():
+    with engine.connect() as c:
+        return jsonify(packs=[_pack_row(c, k) for k in PACKS])
+
+
+def _validate_settings(key, data):
+    """Только известные ключи и тех же типов, что значения по умолчанию."""
+    defaults = PACKS[key].defaults
+    if not isinstance(data, dict):
+        raise ValueError("Настройки — объект JSON: {\"ключ\": значение}.")
+    for k, v in data.items():
+        if k not in defaults:
+            raise ValueError(f"Неизвестная настройка «{k}». Доступны: {', '.join(defaults)}.")
+        d = defaults[k]
+        if isinstance(d, bool) != isinstance(v, bool) or not isinstance(v, type(d)):
+            raise ValueError(f"«{k}»: ожидается {type(d).__name__}, как в значении по умолчанию.")
+        if isinstance(d, list) and not all(isinstance(x, str) and x.strip() for x in v):
+            raise ValueError(f"«{k}»: список непустых строк.")
+    # храним только отличия от значений по умолчанию — тогда обновления кода подхватываются
+    return {k: v for k, v in data.items() if v != defaults[k]}
+
+
+@bp.put("/api/admin/packs/<key>")
+@admin_required
+def admin_pack_settings(key):
+    if key not in PACKS:
+        return jsonify(error="Неизвестная дополнительная проверка."), 404
+    data = (request.get_json(silent=True) or {}).get("settings")
+    try:
+        diff = _validate_settings(key, data if data is not None else {})
+    except ValueError as e:
+        return jsonify(error=str(e)), 400
+    import json as _json
+    with engine.begin() as c:
+        c.execute(delete(check_packs).where(check_packs.c.key == key))
+        if diff:
+            c.execute(insert(check_packs).values(key=key, settings=_json.dumps(diff, ensure_ascii=False),
+                                                 updated_at=_now()))
+        return jsonify(pack=_pack_row(c, key))

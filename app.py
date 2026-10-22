@@ -23,7 +23,8 @@ from checker.fixers import fix_docx, estimate_fixable
 from checker.annotate import annotate_docx
 import auth
 import seo
-from auth import can_autofix, current_user, public_user
+from auth import can_autofix, current_user, public_user, packs_for_check
+from checker.packs import PACKS
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DIST_DIR = os.path.join(BASE_DIR, "frontend", "dist")
@@ -177,8 +178,9 @@ def api_check():
     with tempfile.TemporaryDirectory() as tmp:
         path = os.path.join(tmp, "upload" + ext)  # имя пользователя на диск не попадает
         f.save(path)
+        packs = packs_for_check(current_user())
         try:
-            report = run_normocontrol_cached(path, profile)
+            report = run_normocontrol_cached(path, profile, packs)
         except Exception as e:
             app.logger.exception("check failed")
             msg = "Не удалось обработать файл. Убедитесь, что он не повреждён и не защищён паролем."
@@ -192,6 +194,8 @@ def api_check():
     data["report_id"] = store.put("report", f.filename, data=build_html_report(report, f.filename))
     data["upload_id"] = upload_id
     data["fixable"] = estimate_fixable(report) if upload_id else 0
+    # какие дополнительные проверки вуза применены (для подписи в отчёте)
+    data["extra_checks"] = [PACKS[k].title for k, _ in packs if profile in PACKS[k].profiles] if ext == ".docx" else []
     return jsonify(data)
 
 
@@ -227,7 +231,8 @@ def api_fix():
             src = os.path.join(tmp, "upload.docx")
             f.save(src)
         try:
-            before = run_normocontrol_cached(src, profile)  # после проверки уже в кеше
+            # исправление — только по ГОСТ, поэтому отчёт «до» без дополнительных проверок вуза
+            before = run_normocontrol_cached(src, profile)
             result = fix_docx(src, dst, PROFILES[profile], before=before)
         except Exception:
             app.logger.exception("fix failed")
@@ -268,7 +273,7 @@ def api_annotated_download(upload_id):
         return jsonify(error="Файл не найден или устарел (хранится час). Проверьте работу заново."), 404
     path, name = entry
     try:
-        report = run_normocontrol_cached(path, profile)  # после проверки — из кеша
+        report = run_normocontrol_cached(path, profile, packs_for_check(current_user()))  # после проверки — из кеша
         with tempfile.TemporaryDirectory() as tmp:
             dst = os.path.join(tmp, "annotated.docx")
             annotate_docx(path, dst, report)
