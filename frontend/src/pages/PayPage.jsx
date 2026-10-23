@@ -13,8 +13,10 @@ const PROFILE_PATH = { vkr: "/vkr", coursework: "/coursework", custom: "/standar
 /** Сюда ЮKassa возвращает покупателя после оплаты: ждём подтверждения и выдаём оплаченное. */
 export default function PayPage() {
   const { orderId } = useParams();
-  const { user, setSession } = useSession();
+  const { user, autofixEnabled, setSession } = useSession();
   const [state, setState] = useState({ order: null, error: null, waited: 0 });
+  // нажали «Исправить» — карточку не убираем, даже когда исправление потрачено (в ней ссылка на файл)
+  const [fixing, setFixing] = useState(false);
 
   useEffect(() => { document.title = "Оплата — Нормоконтроль"; }, []);
 
@@ -88,22 +90,36 @@ export default function PayPage() {
       )}
 
       {order?.status === "succeeded" && order.kind === "autofix" && (
-        <>
-          <div className="banner banner-ok body-medium" role="status">
-            <Icon name="ok" />
-            <span>Оплата прошла, спасибо! {order.upload_id
-              ? "Осталось нажать «Исправить и скачать»."
-              : "Загрузите работу на странице проверки — исправление уже оплачено."}</span>
-          </div>
-          {order.upload_id ? (
-            <AutoFix file={{ name: order.file_name || "работа.docx" }} uploadId={order.upload_id}
-                     profileKey={order.profile || "vkr"} standards={order.standards.length ? order.standards : undefined} />
+        <div className="pay-done">
+          <header>
+            <span className="summary-icon ok"><Icon name="ok" /></span>
+            <div>
+              <h1 className="headline-small">Оплата прошла, спасибо!</h1>
+              <p className="body-medium muted">
+                Автоисправление · {order.amount}&nbsp;₽{order.file_name && <> · <b>{order.file_name}</b></>}
+              </p>
+            </div>
+          </header>
+          {order.upload_id && (autofixEnabled || fixing) ? (
+            <div onClickCapture={() => setFixing(true)}>
+              <AutoFix file={{ name: order.file_name || "работа.docx" }} uploadId={order.upload_id}
+                       profileKey={order.profile || "vkr"}
+                       standards={order.standards.length ? order.standards : undefined} />
+            </div>
           ) : (
-            <Link to="/vkr" className="link-btn">
-              <md-filled-button><Icon name="fix" slot="icon" />Загрузить работу</md-filled-button>
-            </Link>
+            <div className="banner banner-info body-medium">
+              <Icon name="info" />
+              <span>
+                {autofixEnabled
+                  ? "Загрузите работу на странице проверки и нажмите «Исправить» — исправление уже оплачено."
+                  : "Оплаченное исправление уже использовано. Если не успели скачать файл — напишите нам на почту из раздела «Контакты», поможем."}
+              </span>
+            </div>
           )}
-        </>
+          <Link to={PROFILE_PATH[order.profile] || "/vkr"} className="link-btn">
+            <md-text-button><Icon name="back" slot="icon" />К проверке работы</md-text-button>
+          </Link>
+        </div>
       )}
     </section>
   );

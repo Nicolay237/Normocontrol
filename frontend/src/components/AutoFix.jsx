@@ -57,9 +57,12 @@ export default function AutoFix({ file, uploadId, profileKey, standards, total =
 
   const offer = <Offer total={total} fixable={fixable} uploadId={uploadId} profileKey={profileKey}
                        standards={standards} fileName={file?.name} />;
-  if (!user) return offer;
+  // Готовый результат показываем всегда: исправление могло потратить последнее оплаченное
+  // исправление или последний лимит подписки — доступ закрылся, но скачать файл нужно.
+  const done = state.phase === "done";
+  if (!done && !user) return offer;
 
-  if (user.must_change_password)
+  if (!done && user.must_change_password)
     return (
       <Card icon="key">
         <h2 className="title-large">Смените временный пароль</h2>
@@ -73,7 +76,7 @@ export default function AutoFix({ file, uploadId, profileKey, standards, total =
       </Card>
     );
 
-  if (user.email_verified === false)
+  if (!done && user.email_verified === false)
     return (
       <Card icon="mail">
         <h2 className="title-large">Подтвердите почту</h2>
@@ -89,8 +92,8 @@ export default function AutoFix({ file, uploadId, profileKey, standards, total =
       </Card>
     );
 
-  const sub = user.subscription;
-  if (!autofixEnabled && sub?.active)
+  const sub = user?.subscription;
+  if (!done && !autofixEnabled && sub?.active)
     return (
       <Card icon="fix">
         <h2 className="title-large">Лимит подписки на этот месяц исчерпан</h2>
@@ -102,9 +105,9 @@ export default function AutoFix({ file, uploadId, profileKey, standards, total =
     );
 
   // вошёл, но бесплатного доступа и подписки нет — покупка
-  if (!autofixEnabled) return offer;
+  if (!done && !autofixEnabled) return offer;
 
-  if (state.phase === "done") {
+  if (done) {
     const r = state.result;
     const remaining = r.remaining.flatMap((c) => c.issues);
     const fixedCats = r.categories.filter((c) => c.fixed > 0);

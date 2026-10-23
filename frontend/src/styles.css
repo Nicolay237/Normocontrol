@@ -489,6 +489,10 @@ button.summary-icon:focus-visible { outline: 2px solid var(--md-sys-color-primar
 .my-orders ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .my-orders li { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 @media (max-width: 720px) { .receipt-form { max-width: none; justify-content: flex-start; } .receipt-form .check, .receipt-error { justify-content: flex-start; text-align: left; } }
+.pay-done { display: grid; gap: 16px; }
+.pay-done > header { display: flex; gap: 16px; align-items: center; }
+.pay-done > header h1, .pay-done > header p { margin: 0; }
+.pay-done .link-btn { justify-self: start; }
 .offer-sub {
   display: flex; gap: 16px; align-items: center; justify-content: space-between; flex-wrap: wrap;
   padding: 16px; border-radius: 16px; border: 1px solid var(--md-sys-color-outline-variant);
