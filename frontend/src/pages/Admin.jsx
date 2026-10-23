@@ -118,6 +118,50 @@ function PackCard({ pack, onSaved }) {
 
 const fmtDateTime = (iso) => (iso ? new Date(iso).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" }) : "—");
 
+/** Ссылка на чек: вставили — сайт сохранил, отметил «чек выдан» и отправил покупателю письмо. */
+function ReceiptCell({ order, onSaved }) {
+  const [url, setUrl] = useState("");
+  const [state, setState] = useState({ busy: false, error: null, info: null });
+
+  async function send(e) {
+    e.preventDefault();
+    setState({ busy: true, error: null, info: null });
+    try {
+      const res = await adminOrderUpdate(order.id, { receipt_url: url.trim() });
+      setState({ busy: false, error: null,
+                 info: res.mail_sent === false ? "Сохранено, но письмо не ушло — отправьте ссылку покупателю сами." : null });
+      setUrl("");
+      onSaved();
+    } catch (err) {
+      setState({ busy: false, error: err.message, info: null });
+    }
+  }
+
+  if (order.receipt_url)
+    return (
+      <span className="receipt-done body-medium">
+        <Icon name="ok" size={18} />
+        <a href={order.receipt_url} target="_blank" rel="noreferrer">Чек</a> отправлен
+        {state.info && <span className="muted"> · {state.info}</span>}
+      </span>
+    );
+  return (
+    <form className="receipt-form" onSubmit={send}>
+      <input className="field-input body-medium" type="url" placeholder="Ссылка на чек из «Мой налог»"
+             value={url} onChange={(e) => setUrl(e.target.value)} aria-label={`Ссылка на чек для ${order.login}`} />
+      <md-filled-tonal-button type="submit" disabled={state.busy || !url.trim() ? "" : undefined}>
+        {state.busy ? "Отправляем…" : "Отправить чек"}
+      </md-filled-tonal-button>
+      {state.error && <span className="receipt-error body-medium">{state.error}</span>}
+      <label className="check label-medium" title="Если чек выдали без ссылки — например, лично">
+        <input type="checkbox" checked={order.receipt_issued}
+               onChange={async (e) => { await adminOrderUpdate(order.id, { receipt_issued: e.target.checked }); onSaved(); }} />
+        выдан без ссылки
+      </label>
+    </form>
+  );
+}
+
 /** Оплаты: самозанятый выдаёт чек в «Мой налог» на каждую — отметка помогает ничего не пропустить. */
 function Orders() {
   const [orders, setOrders] = useState(null);
@@ -131,8 +175,9 @@ function Orders() {
         <h2 className="title-large">Оплаты {orders.length > 0 && <span className="muted">({orders.length})</span>}</h2>
       </div>
       <p className="body-medium muted supporting">
-        На каждую оплату выдайте чек в приложении «Мой налог» (доход от физлица, сумма и дата — как здесь)
-        и отметьте его. {pending.length > 0 && <b>Без чека: {pending.length}.</b>}
+        На каждую оплату создайте чек в «Мой налог» (новая продажа, физлицо, сумма и дата — как здесь),
+        скопируйте ссылку на чек и вставьте её сюда — сайт сам отправит чек покупателю на почту.
+        Срок — до 9-го числа следующего месяца. {pending.length > 0 && <b>Без чека: {pending.length}.</b>}
       </p>
       {orders.length === 0 ? (
         <p className="body-medium muted">Оплат пока нет.</p>
@@ -146,11 +191,7 @@ function Orders() {
                 </span>
                 <span className="body-medium muted"><code>{o.login}</code> · {fmtDateTime(o.paid_at)}</span>
               </div>
-              <label className="check body-medium">
-                <input type="checkbox" checked={o.receipt_issued}
-                       onChange={async (e) => { await adminOrderUpdate(o.id, { receipt_issued: e.target.checked }); load(); }} />
-                Чек выдан
-              </label>
+              <ReceiptCell order={o} onSaved={load} />
             </li>
           ))}
         </ul>

@@ -88,7 +88,10 @@ orders = Table(
     Column("paid_at", DateTime(timezone=True), nullable=True),
     Column("fulfilled", Boolean, nullable=False, default=False),       # начислено ли оплаченное
     Column("receipt_issued", Boolean, nullable=False, default=False),  # чек в «Мой налог» выдан
+    Column("receipt_url", Text, nullable=True),                        # ссылка на чек из «Мой налог»
 )
+# ссылки на чеки «Мой налог» (веб-кабинет и приложение дают ссылки этого сайта)
+RECEIPT_URL_RE = re.compile(r"^https://lknpd\.nalog\.ru/\S+$")
 AUTOFIX_PRICE = int(os.environ.get("AUTOFIX_PRICE", "99"))
 
 # коды из писем: подтверждение почты (verify) и сброс пароля (reset); храним только хеш
@@ -136,6 +139,10 @@ _ADDED_COLUMNS = {
     "consent_at": "{timestamp} NULL",
     "email_verified": "BOOLEAN NOT NULL DEFAULT TRUE",
     "autofix_credits": "INTEGER NOT NULL DEFAULT 0",
+}
+# то же для других таблиц: {таблица: {колонка: тип}}
+_ADDED_COLUMNS_OTHER = {
+    "orders": {"receipt_url": "TEXT NULL"},
 }
 
 engine = None
@@ -188,13 +195,16 @@ def init_app(app, base_dir):
 
 def _add_missing_columns():
     """create_all не меняет существующие таблицы — новые колонки добавляем сами."""
-    have = {c["name"] for c in inspect(engine).get_columns("users")}
-    with engine.begin() as c:
-        timestamp = "TIMESTAMP WITH TIME ZONE" if engine.dialect.name == "postgresql" else "DATETIME"
-        for name, ddl in _ADDED_COLUMNS.items():
-            if name not in have:
-                c.execute(text(f"ALTER TABLE users ADD COLUMN {name} {ddl.format(timestamp=timestamp)}"))
-                log.info("в таблицу users добавлена колонка %s", name)
+    timestamp = "TIMESTAMP WITH TIME ZONE" if engine.dialect.name == "postgresql" else "DATETIME"
+    for table, columns in {"users": _ADDED_COLUMNS, **_ADDED_COLUMNS_OTHER}.items():
+        if not inspect(engine).has_table(table):
+            continue   # таблицы ещё нет — create_all создаст её сразу со всеми колонками
+        have = {c["name"] for c in inspect(engine).get_columns(table)}
+        with engine.begin() as c:
+            for name, ddl in columns.items():
+                if name not in have:
+                    c.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl.format(timestamp=timestamp)}"))
+                    log.info("в таблицу %s добавлена колонка %s", table, name)
 
 
 def _bootstrap_admin():
@@ -1000,15 +1010,62 @@ def admin_orders():
     return jsonify(orders=[{
         "id": r["id"], "login": r["login"], "kind": r["kind"], "amount": r["amount"], "status": r["status"],
         "paid_at": _aware(r["paid_at"]).isoformat() if r["paid_at"] else None,
-        "receipt_issued": r["receipt_issued"]} for r in rows if r["status"] == "succeeded"])
+        "receipt_issued": r["receipt_issued"], "receipt_url": r["receipt_url"]}
+        for r in rows if r["status"] == "succeeded"])
+
+
+def _order_title(o):
+    return "подписка на 30 дней" if o["kind"] == "subscription" else "автоисправление оформления работы"
 
 
 @bp.patch("/api/admin/orders/<order_id>")
 @admin_required
 def admin_order_update(order_id):
-    value = bool((request.get_json(silent=True) or {}).get("receipt_issued"))
-    with engine.begin() as c:
-        res = c.execute(update(orders).where(orders.c.id == order_id).values(receipt_issued=value))
-    if not res.rowcount:
+    """
+    {"receipt_issued": bool} — отметка вручную; {"receipt_url": "https://lknpd.nalog.ru/…"} — ссылка на чек
+    из «Мой налог»: сохраняем, отмечаем «чек выдан» и отправляем чек покупателю на почту.
+    """
+    data = request.get_json(silent=True) or {}
+    with engine.connect() as c:
+        o = c.execute(select(orders, users.c.login).join(users, users.c.id == orders.c.user_id, isouter=True)
+                      .where(orders.c.id == order_id)).mappings().first()
+    if not o:
         return jsonify(error="Заказ не найден."), 404
-    return jsonify(ok=True)
+    values, mail_sent = {}, None
+    if "receipt_url" in data:
+        url = (data.get("receipt_url") or "").strip()
+        if not RECEIPT_URL_RE.match(url):
+            return jsonify(error="Вставьте ссылку на чек из «Мой налог» — она начинается с https://lknpd.nalog.ru/"), 400
+        values.update(receipt_url=url, receipt_issued=True)
+    if "receipt_issued" in data:
+        values["receipt_issued"] = bool(data["receipt_issued"])
+    if not values:
+        return jsonify(error="Нечего менять."), 400
+    with engine.begin() as c:
+        c.execute(update(orders).where(orders.c.id == order_id).values(**values))
+    if "receipt_url" in values:
+        if mailer.enabled() and EMAIL_RE.match(o["login"] or ""):
+            paid = _aware(o["paid_at"]).strftime("%d.%m.%Y") if o["paid_at"] else ""
+            try:
+                mailer.send(o["login"], "Чек за оплату на сайте «Нормоконтроль»",
+                            f"Здравствуйте!\n\nСпасибо за оплату: {_order_title(o)}, {o['amount']} ₽ ({paid}).\n\n"
+                            f"Ваш чек (самозанятый, «Мой налог»):\n{values['receipt_url']}\n\n"
+                            f"Все оплаты и чеки — в личном кабинете: {_site()}/account\n\n— Нормоконтроль\n")
+                mail_sent = True
+            except Exception:
+                log.exception("не удалось отправить чек по заказу %s", order_id)
+                mail_sent = False
+    return jsonify(ok=True, mail_sent=mail_sent)
+
+
+@bp.get("/api/account/orders")
+@login_required
+def account_orders():
+    """Оплаты пользователя и ссылки на чеки — для личного кабинета."""
+    with engine.connect() as c:
+        rows = c.execute(select(orders).where(orders.c.user_id == current_user()["id"],
+                                              orders.c.status == "succeeded")
+                         .order_by(orders.c.created_at.desc())).mappings().all()
+    return jsonify(orders=[{"id": r["id"], "title": _order_title(r), "amount": r["amount"],
+                            "paid_at": _aware(r["paid_at"]).isoformat() if r["paid_at"] else None,
+                            "receipt_url": r["receipt_url"]} for r in rows])

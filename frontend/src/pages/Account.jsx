@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Navigate, useLocation, useNavigate, Link } from "react-router-dom";
-import { changePassword, logout } from "../api.js";
+import { accountOrders, changePassword, logout } from "../api.js";
 import { useSession } from "../ProfilesContext.jsx";
 import { Field, Icon, attr, submitOnEnter } from "../ui.jsx";
 
@@ -10,6 +10,8 @@ export default function Account() {
   const location = useLocation();
   const [form, setForm] = useState({ current: "", next: "", repeat: "" });
   const [state, setState] = useState({ busy: false, error: null, done: false });
+  const [orders, setOrders] = useState([]);
+  useEffect(() => { if (user) accountOrders().then((r) => setOrders(r.orders)).catch(() => {}); }, [user?.id]);
 
   useEffect(() => { document.title = "Аккаунт — Нормоконтроль"; }, []);
   if (!user) return <Navigate to="/login" replace state={{ from: "/account" }} />;
@@ -85,6 +87,22 @@ export default function Account() {
           <Link to="/admin" className="list-link label-large">
             <Icon name="users" size={20} /> Управление учётными записями <Icon name="forward" size={18} />
           </Link>
+        )}
+
+        {!first && orders.length > 0 && (
+          <div className="my-orders">
+            <h2 className="title-medium">Мои оплаты</h2>
+            <ul className="body-medium">
+              {orders.map((o) => (
+                <li key={o.id}>
+                  <span>{o.paid_at ? new Date(o.paid_at).toLocaleDateString("ru-RU") : ""} · {o.title} · {o.amount}&nbsp;₽</span>
+                  {o.receipt_url
+                    ? <a href={o.receipt_url} target="_blank" rel="noreferrer">Чек</a>
+                    : <span className="muted label-medium">чек будет отправлен на почту</span>}
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
 
         <form className="form" onSubmit={submit} onKeyDown={submitOnEnter}>

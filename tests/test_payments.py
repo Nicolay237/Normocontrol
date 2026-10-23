@@ -143,3 +143,38 @@ def test_admin_sees_paid_orders_for_receipts(kassa):
     assert admin.patch(f"/api/admin/orders/{oid}", json={"receipt_issued": True}).status_code == 200
     assert next(r for r in admin.get("/api/admin/orders").get_json()["orders"] if r["id"] == oid)["receipt_issued"]
     assert c.get("/api/admin/orders").status_code == 403
+
+
+def test_receipt_link_is_emailed_and_shown_to_buyer(kassa, monkeypatch):
+    import mailer
+    for k, v in (("SMTP_HOST", "smtp.test"), ("SMTP_USER", "noreply@normocontrol.site"), ("SMTP_PASSWORD", "x")):
+        monkeypatch.setenv(k, v)
+    sent = []
+    monkeypatch.setattr(mailer, "send", lambda to, subject, text: sent.append((to, subject, text)))
+
+    c = buyer("10.5.0.9")
+    # регистрация при включённой почте требует код — подтвердим его
+    import re as _re
+    code = _re.search(r"\b(\d{6})\b", sent[-1][2]).group(1)
+    c.post("/api/email/verify", json={"code": code})
+    oid = order(c).get_json()["order_id"]
+    pid = next(p for p, v in kassa.payments.items() if v["metadata"]["order_id"] == oid)
+    kassa.pay(pid)
+    c.get(f"/api/orders/{oid}")
+    assert c.get("/api/account/orders").get_json()["orders"][0]["receipt_url"] is None
+
+    admin = admin_client()
+    r = admin.patch(f"/api/admin/orders/{oid}", json={"receipt_url": "https://evil.example/receipt"})
+    assert r.status_code == 400
+    link = "https://lknpd.nalog.ru/api/v1/receipt/123456789012/200abc/print"
+    r = admin.patch(f"/api/admin/orders/{oid}", json={"receipt_url": link})
+    assert r.status_code == 200 and r.get_json()["mail_sent"] is True
+    to, subject, text = sent[-1]
+    assert to == "buyer10509@mail.ru" and "Чек" in subject and link in text and "99 ₽" in text
+
+    row = next(o for o in admin.get("/api/admin/orders").get_json()["orders"] if o["id"] == oid)
+    assert row["receipt_issued"] is True and row["receipt_url"] == link
+    mine = c.get("/api/account/orders").get_json()["orders"]
+    assert mine[0]["receipt_url"] == link and mine[0]["amount"] == 99
+    # чужие оплаты в кабинете не видны
+    assert buyer("10.5.0.10").get("/api/account/orders").get_json()["orders"] == []

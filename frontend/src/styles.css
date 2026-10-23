@@ -478,6 +478,17 @@ button.summary-icon:focus-visible { outline: 2px solid var(--md-sys-color-primar
 .summary-cheer { margin: 4px 0 0; color: var(--md-sys-color-tertiary); }
 @keyframes cheer-pop { from { transform: scale(.3); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .summary-clean .summary-icon { animation: none; } }
+.receipt-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end; max-width: 460px; }
+.receipt-form .field-input { min-height: 40px; padding: 6px 12px; flex: 1 1 220px; }
+.receipt-form .check { flex-basis: 100%; justify-content: flex-end; color: var(--md-sys-color-on-surface-variant); }
+.receipt-error { flex-basis: 100%; color: var(--md-sys-color-error); text-align: right; }
+.receipt-done { display: inline-flex; gap: 6px; align-items: center; color: var(--md-sys-color-tertiary); flex-shrink: 0; }
+.receipt-done a, .my-orders a { color: var(--md-sys-color-primary); font-weight: 500; }
+.my-orders { display: grid; gap: 8px; }
+.my-orders h2 { margin: 0; }
+.my-orders ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.my-orders li { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+@media (max-width: 720px) { .receipt-form { max-width: none; justify-content: flex-start; } .receipt-form .check, .receipt-error { justify-content: flex-start; text-align: left; } }
 .offer-sub {
   display: flex; gap: 16px; align-items: center; justify-content: space-between; flex-wrap: wrap;
   padding: 16px; border-radius: 16px; border: 1px solid var(--md-sys-color-outline-variant);
