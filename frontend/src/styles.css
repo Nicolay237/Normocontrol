@@ -489,6 +489,19 @@ button.summary-icon:focus-visible { outline: 2px solid var(--md-sys-color-primar
 .my-orders ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .my-orders li { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 @media (max-width: 720px) { .receipt-form { max-width: none; justify-content: flex-start; } .receipt-form .check, .receipt-error { justify-content: flex-start; text-align: left; } }
+.account-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+.account-head .hero-title { margin-bottom: 4px; }
+.account-head .supporting { margin-bottom: 0; }
+.account-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.account-password { margin-top: 24px; max-width: 520px; }
+.account-password h2 { margin: 0 0 8px; }
+.account-access { margin-bottom: 12px; }
+.price-grid.account-access > .card { min-height: 0; }
+.account-access .price-card md-filled-tonal-button, .account-access .price-card md-filled-button { align-self: flex-start; margin-top: 8px; }
+.account .user-row md-filled-tonal-button { flex-shrink: 0; }
+.meter { height: 8px; border-radius: 4px; background: color-mix(in srgb, currentColor 18%, transparent); overflow: hidden; }
+.meter > span { display: block; height: 100%; border-radius: 4px; background: currentColor; }
+.pay-notice { max-width: 520px; margin: 0 auto; }
 .pay-done { display: grid; gap: 16px; }
 .pay-done > header { display: flex; gap: 16px; align-items: center; }
 .pay-done > header h1, .pay-done > header p { margin: 0; }

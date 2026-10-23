@@ -93,3 +93,15 @@ def test_check_reports_fixable_estimate_and_price():
     assert 0 < rep["fixable"] <= rep["total"]
     cfg = c.get("/api/config").get_json()
     assert cfg["autofix_price"] > 0 and cfg["payments_enabled"] is False
+
+
+def test_report_for_stored_upload():
+    client = server.app.test_client()
+    doc = md.good_document()
+    doc.styles["Normal"].paragraph_format.line_spacing = 1.0
+    first = post(client, "/api/check", file=(io.BytesIO(docx_bytes(doc)), "Работа.docx"), profile="vkr").get_json()
+    again = client.get(f"/api/uploads/{first['upload_id']}/report?profile=vkr").get_json()
+    assert again["total"] == first["total"] and again["file"] == "Работа.docx"
+    assert again["upload_id"] == first["upload_id"] and again["report_id"]
+    r = client.get("/api/uploads/0123456789abcdef0123456789abcdef/report?profile=vkr")
+    assert r.status_code == 404 and r.get_json()["code"] == "upload_expired"

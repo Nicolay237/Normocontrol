@@ -217,8 +217,13 @@ def api_check():
         # .docx храним час: автоисправление возьмёт его отсюда, без повторной загрузки с телефона
         upload_id = store.put("upload", f.filename, src_path=path) if ext == ".docx" else None
 
-    data = report.to_dict(f.filename)
-    data["report_id"] = store.put("report", f.filename, data=build_html_report(report, f.filename))
+    return jsonify(_report_payload(report, f.filename, upload_id, profile, stds, packs, ext))
+
+
+def _report_payload(report, filename, upload_id, profile, stds, packs, ext):
+    """Ответ проверки: отчёт, ссылки на файлы и что доступно дальше (общий для /api/check и повторного показа)."""
+    data = report.to_dict(filename)
+    data["report_id"] = store.put("report", filename, data=build_html_report(report, filename))
     data["upload_id"] = upload_id
     # автоисправление умеет ГОСТ 7.32 и ГОСТ Р 7.0.100 — для других наборов его не предлагаем
     data["autofix_supported"] = bool(upload_id) and (profile != "custom" or standards.fixable(stds))
@@ -226,7 +231,31 @@ def api_check():
     data["standards"] = list(stds)
     # какие дополнительные проверки вуза применены (для подписи в отчёте)
     data["extra_checks"] = [PACKS[k].title for k, _ in packs if profile in PACKS[k].profiles] if ext == ".docx" else []
-    return jsonify(data)
+    return data
+
+
+@app.route("/api/uploads/<upload_id>/report")
+def api_upload_report(upload_id):
+    """
+    Отчёт по уже загруженной работе (хранится час) — для страницы после оплаты: покупатель вернулся
+    с ЮKassa, и мы показываем ему ту же проверку, только с открытым автоисправлением.
+    """
+    try:
+        profile, stds = _profile_from(request.args)
+    except ValueError as e:
+        return jsonify(error=str(e)), 400
+    entry = store.get(upload_id, "upload")
+    if not entry:
+        return jsonify(error="Файл на сервере уже удалён (он хранится час) — загрузите работу ещё раз.",
+                       code="upload_expired"), 404
+    path, name = entry
+    packs = packs_for_check(current_user())
+    try:
+        report = run_normocontrol_cached(path, profile, packs, stds)   # после проверки — из кеша
+    except Exception:
+        app.logger.exception("report failed")
+        return jsonify(error="Не удалось обработать файл."), 422
+    return jsonify(_report_payload(report, name, upload_id, profile, stds, packs, ".docx"))
 
 
 @app.route("/api/fix", methods=["POST"])
