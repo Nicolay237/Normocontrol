@@ -11,6 +11,7 @@ import StandardsPage from "./pages/StandardsPage.jsx";
 import LegalPage, { LEGAL_LINKS } from "./pages/LegalPage.jsx";
 import Verify from "./pages/Verify.jsx";
 import Forgot from "./pages/Forgot.jsx";
+import PayPage from "./pages/PayPage.jsx";
 import ThemeToggle from "./components/ThemeToggle.jsx";
 
 function UserButton() {
@@ -65,6 +66,7 @@ export default function App() {
           <Route path="/register" element={<Login mode="register" />} />
           <Route path="/verify" element={<Verify />} />
           <Route path="/forgot" element={<Forgot />} />
+          <Route path="/pay/:orderId" element={<PayPage />} />
           <Route path="/account" element={<Account />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="*" element={<Home notFound />} />

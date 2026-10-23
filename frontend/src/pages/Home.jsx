@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useProfiles } from "../ProfilesContext.jsx";
 import { Icon } from "../ui.jsx";
+import useBuy from "../components/useBuy.js";
 
 const CARDS = [
   { key: "vkr", icon: "vkr", fallback: "Выпускная квалификационная работа" },
@@ -15,7 +16,7 @@ const CARDS = [
 export function Pricing() {
   const { config } = useProfiles();
   const user = config.user;
-  const [soon, setSoon] = useState(false);
+  const { buy, busy, error, soon } = useBuy();
   const price = config.autofix_price ?? 99;
   const subPrice = config.subscription_price ?? 299;
   const subLimit = config.subscription_limit ?? 30;
@@ -49,9 +50,9 @@ export function Pricing() {
             {subLimit} автоисправлений в месяц — для тех, кто правит работу много раз, и для преподавателей.
           </p>
           {user ? (
-            <md-filled-button onClick={() => (config.payments_enabled ? null : setSoon(true))}>
+            <md-filled-button disabled={busy ? "" : undefined} onClick={() => buy("subscription")}>
               <Icon name="fix" slot="icon" />
-              Оформить подписку
+              {busy ? "Переходим к оплате…" : "Оформить подписку"}
             </md-filled-button>
           ) : (
             <Link to="/register" state={{ from: "/" }} className="link-btn">
@@ -63,6 +64,9 @@ export function Pricing() {
           )}
         </div>
       </div>
+      {error && (
+        <div className="banner banner-error body-medium" role="alert"><Icon name="error" /><span>{error}</span></div>
+      )}
       {soon && (
         <div className="banner banner-info body-medium" role="status">
           <Icon name="info" />

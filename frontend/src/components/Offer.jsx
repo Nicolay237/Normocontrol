@@ -1,8 +1,8 @@
-import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useProfiles } from "../ProfilesContext.jsx";
 import { Icon } from "../ui.jsx";
 import { plural } from "./ReportView.jsx";
+import useBuy from "./useBuy.js";
 
 const BENEFITS = [
   "Поля, шрифт, интервалы, отступы, заголовки, подписи, нумерация и список литературы — по ГОСТ",
@@ -13,14 +13,17 @@ const BENEFITS = [
 
 /**
  * Предложение автоисправления для тех, у кого нет бесплатного доступа (без входа или после регистрации): сколько замечаний уйдёт, цена и кнопка.
+ * Оплата — через ЮKassa (useBuy); после неё покупатель вернётся на /pay/<заказ> и исправит эту же
+ * работу — для этого в заказ передаём upload_id, тип работы и набор ГОСТов.
  * Пока оплата не подключена (payments_enabled = false), кнопка объясняет, что оплата скоро
  * заработает, и предлагает бесплатную «работу с отметками».
  */
-export default function Offer({ total, fixable }) {
+export default function Offer({ total, fixable, uploadId, profileKey, standards, fileName }) {
   const { config } = useProfiles();
   const user = config.user;
   const location = useLocation();
-  const [soon, setSoon] = useState(false);
+  const { buy, busy, error, soon } = useBuy();
+  const work = { upload_id: uploadId, profile: profileKey, standards, file_name: fileName };
   const price = config.autofix_price ?? 99;
   const left = Math.max(0, total - fixable);
 
@@ -50,12 +53,9 @@ export default function Offer({ total, fixable }) {
       </ul>
 
       <div className="offer-cta">
-        <md-filled-button
-          class="buy"
-          onClick={() => (config.payments_enabled ? null : setSoon(true))}
-        >
+        <md-filled-button class="buy" disabled={busy ? "" : undefined} onClick={() => buy("autofix", work)}>
           <Icon name="fix" slot="icon" />
-          Исправить за {price}&nbsp;₽
+          {busy === "autofix" ? "Переходим к оплате…" : <>Исправить за {price}&nbsp;₽</>}
         </md-filled-button>
         <span className="label-medium muted">
           Разовая оплата · карта или СБП · оплачивая, вы принимаете <Link to="/offer">оферту</Link>{" "}
@@ -63,6 +63,9 @@ export default function Offer({ total, fixable }) {
         </span>
       </div>
 
+      {error && (
+        <div className="banner banner-error body-medium" role="alert"><Icon name="error" /><span>{error}</span></div>
+      )}
       {soon && (
         <div className="banner banner-info body-medium" role="status">
           <Icon name="info" />
@@ -81,15 +84,9 @@ export default function Offer({ total, fixable }) {
             руководителя.
           </p>
         </div>
-        {user ? (
-          <md-outlined-button onClick={() => (config.payments_enabled ? null : setSoon(true))}>
-            Оформить подписку
-          </md-outlined-button>
-        ) : (
-          <Link to="/register" state={{ from: location.pathname }} className="link-btn">
-            <md-outlined-button>Оформить подписку</md-outlined-button>
-          </Link>
-        )}
+        <md-outlined-button disabled={busy ? "" : undefined} onClick={() => buy("subscription")}>
+          {busy === "subscription" ? "Переходим к оплате…" : "Оформить подписку"}
+        </md-outlined-button>
       </div>
 
       <p className="body-medium offer-uni">

@@ -13,7 +13,7 @@ FROM python:3.12-slim
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY app.py auth.py seo.py legal.py mailer.py normocontrol.py ./
+COPY app.py auth.py seo.py legal.py mailer.py payments.py normocontrol.py ./
 COPY checker ./checker
 COPY scripts ./scripts
 COPY content ./content

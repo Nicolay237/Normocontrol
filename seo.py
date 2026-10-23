@@ -158,6 +158,7 @@ PAGES = {
 
 # служебные страницы: доступны, но не индексируются
 NOINDEX = {"/login", "/register", "/verify", "/forgot", "/account", "/admin"}
+NOINDEX_PREFIXES = ("/pay/",)   # страницы заказов
 
 
 # ── вставка в index.html ──────────────────────────────────────────────────
@@ -194,7 +195,7 @@ def head_and_body(path, base):
             tags.append(f'<meta name="{name}" content="{e(os.environ[env])}">')
 
     if not page:
-        status = 200 if path in NOINDEX else 404
+        status = 200 if path in NOINDEX or path.startswith(NOINDEX_PREFIXES) else 404
         tags.append('<meta name="robots" content="noindex">')
         return {"head": "".join(tags), "body": "", "status": status, "title": None, "description": None}
 
@@ -227,6 +228,7 @@ def robots_txt(base):
         "Disallow: /register\n"
         "Disallow: /verify\n"
         "Disallow: /forgot\n"
+        "Disallow: /pay/\n"
         f"\nSitemap: {base}/sitemap.xml\n"
     )
 

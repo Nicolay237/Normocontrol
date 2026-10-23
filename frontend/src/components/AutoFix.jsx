@@ -37,8 +37,8 @@ export default function AutoFix({ file, uploadId, profileKey, standards, total =
       setState({ phase: "done", result, error: null, upload: null });
       // остаток лимита подписки — в шапку аккаунта и карточку
       if (result.subscription && user)
-        setSession({ user: { ...user, subscription: result.subscription },
-                     autofix_enabled: user.free_autofix || result.subscription.left > 0 });
+        setSession({ user: { ...user, subscription: result.subscription, autofix_credits: result.autofix_credits },
+                     autofix_enabled: user.free_autofix || result.subscription.left > 0 || result.autofix_credits > 0 });
     } catch (e) {
       if (e.code === "login_required") setSession({ user: null, autofix_enabled: false }); // сессия истекла
       if (e.code === "payment_required" || e.code === "limit_reached")
@@ -55,7 +55,9 @@ export default function AutoFix({ file, uploadId, profileKey, standards, total =
       </Card>
     );
 
-  if (!user) return <Offer total={total} fixable={fixable} />;
+  const offer = <Offer total={total} fixable={fixable} uploadId={uploadId} profileKey={profileKey}
+                       standards={standards} fileName={file?.name} />;
+  if (!user) return offer;
 
   if (user.must_change_password)
     return (
@@ -100,7 +102,7 @@ export default function AutoFix({ file, uploadId, profileKey, standards, total =
     );
 
   // вошёл, но бесплатного доступа и подписки нет — покупка
-  if (!autofixEnabled) return <Offer total={total} fixable={fixable} />;
+  if (!autofixEnabled) return offer;
 
   if (state.phase === "done") {
     const r = state.result;
@@ -147,6 +149,9 @@ export default function AutoFix({ file, uploadId, profileKey, standards, total =
           </div>
         )}
 
+        {r.autofix_credits > 0 && !user.free_autofix && (
+          <p className="body-medium muted">Оплаченных исправлений осталось: {r.autofix_credits}.</p>
+        )}
         {r.subscription?.active && !user.free_autofix && (
           <p className="body-medium muted">
             По подписке в этом месяце осталось {r.subscription.left} из {r.subscription.limit} исправлений.

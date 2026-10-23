@@ -28,6 +28,10 @@ export const resendCode = () => api("/api/email/resend", { method: "POST", body:
 export const forgotPassword = (email) => api("/api/password/forgot", { method: "POST", body: { email } });
 export const resetPassword = (email, code, password) =>
   api("/api/password/reset", { method: "POST", body: { email, code, password } });
+export const createOrder = (body) => api("/api/orders", { method: "POST", body });
+export const fetchOrder = (id) => api(`/api/orders/${id}`);
+export const adminOrders = () => api("/api/admin/orders");
+export const adminOrderUpdate = (id, data) => api(`/api/admin/orders/${id}`, { method: "PATCH", body: data });
 export const fetchLegal = (key) => fetch(`/api/legal/${key}`).then(parse);
 export const logout = () => api("/api/logout", { method: "POST", body: {} });
 export const changePassword = (current, next) =>

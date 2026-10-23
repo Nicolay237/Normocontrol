@@ -24,7 +24,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from auth import users, metadata  # noqa: E402
 
 FIELDS = ("login", "name", "password_hash", "role", "active", "must_change_password",
-          "session_version", "created_at", "last_login_at", "free_autofix", "registered", "subscription_until", "consent_at", "email_verified")
+          "session_version", "created_at", "last_login_at", "free_autofix", "registered", "subscription_until", "consent_at", "email_verified", "autofix_credits")
 
 
 def _url(raw):

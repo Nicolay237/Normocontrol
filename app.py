@@ -149,14 +149,14 @@ def api_config():
 
 
 # Цена автоисправления для пользователей без входа (оплата подключается следующим шагом).
-AUTOFIX_PRICE = int(os.environ.get("AUTOFIX_PRICE", "99"))
+AUTOFIX_PRICE = auth.AUTOFIX_PRICE
 SUBSCRIPTION_PRICE, SUBSCRIPTION_LIMIT = auth.SUBSCRIPTION_PRICE, auth.SUBSCRIPTION_LIMIT
-PAYMENTS_ENABLED = os.environ.get("PAYMENTS_ENABLED") == "1"
+import payments
 
 
 def _client_config():
     return {"autofix_enabled": can_autofix(), "user": public_user(current_user()),
-            "autofix_price": AUTOFIX_PRICE, "payments_enabled": PAYMENTS_ENABLED,
+            "autofix_price": AUTOFIX_PRICE, "payments_enabled": payments.enabled(),
             "subscription_price": SUBSCRIPTION_PRICE, "subscription_limit": SUBSCRIPTION_LIMIT}
 
 
@@ -281,10 +281,14 @@ def api_fix():
 
     if access == "subscription":
         auth.record_autofix(u)
+    elif access == "credit":
+        auth.consume_credit(u)
+        u = dict(u, autofix_credits=u["autofix_credits"] - 1)
     payload = result.to_dict()
     payload["file"] = filename
     payload["download_id"] = download_id
     payload["subscription"] = auth.subscription_state(u)
+    payload["autofix_credits"] = u["autofix_credits"]
     return jsonify(payload)
 
 

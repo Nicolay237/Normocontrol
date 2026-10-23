@@ -54,6 +54,12 @@ export default function Account() {
             <span>Почта не подтверждена — введите код из письма. Без этого оплата и автоисправление недоступны.</span>
           </Link>
         )}
+        {!first && !user.free_autofix && user.autofix_credits > 0 && (
+          <p className="body-medium access-note on">
+            <Icon name="fix" size={18} />
+            <span>Оплаченных исправлений: {user.autofix_credits}. Загрузите работу — и нажмите «Исправить».</span>
+          </p>
+        )}
         {!first && !user.free_autofix && user.subscription?.active && (
           <p className="body-medium access-note on">
             <Icon name="fix" size={18} />

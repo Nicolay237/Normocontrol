@@ -35,6 +35,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 from checker.packs import PACKS, settings_for
 import mailer
+import payments
 
 log = logging.getLogger("normocontrol.auth")
 bp = Blueprint("auth", __name__)
@@ -65,7 +66,30 @@ users = Table(
     Column("subscription_until", DateTime(timezone=True), nullable=True),
     # почта подтверждена кодом из письма (учётки от администратора и старые — считаются подтверждёнными)
     Column("email_verified", Boolean, nullable=False, default=True),
+    # оплаченные и ещё не использованные разовые автоисправления
+    Column("autofix_credits", Integer, nullable=False, default=0),
 )
+
+# заказы: разовое исправление (autofix) или подписка (subscription), оплата через ЮKassa
+orders = Table(
+    "orders", metadata,
+    Column("id", String(32), primary_key=True),
+    Column("user_id", Integer, nullable=False, index=True),
+    Column("kind", String(16), nullable=False),
+    Column("amount", Integer, nullable=False),               # ₽
+    Column("status", String(16), nullable=False, default="pending"),   # pending | succeeded | canceled
+    Column("payment_id", String(64), nullable=True, index=True),
+    # что исправить после оплаты: работа, загруженная перед покупкой (хранится на сервере час)
+    Column("upload_id", String(64), nullable=True),
+    Column("profile", String(16), nullable=True),
+    Column("standards", String(200), nullable=True),
+    Column("file_name", String(255), nullable=True),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("paid_at", DateTime(timezone=True), nullable=True),
+    Column("fulfilled", Boolean, nullable=False, default=False),       # начислено ли оплаченное
+    Column("receipt_issued", Boolean, nullable=False, default=False),  # чек в «Мой налог» выдан
+)
+AUTOFIX_PRICE = int(os.environ.get("AUTOFIX_PRICE", "99"))
 
 # коды из писем: подтверждение почты (verify) и сброс пароля (reset); храним только хеш
 email_codes = Table(
@@ -111,6 +135,7 @@ _ADDED_COLUMNS = {
     "subscription_until": "{timestamp} NULL",
     "consent_at": "{timestamp} NULL",
     "email_verified": "BOOLEAN NOT NULL DEFAULT TRUE",
+    "autofix_credits": "INTEGER NOT NULL DEFAULT 0",
 }
 
 engine = None
@@ -214,6 +239,7 @@ def public_user(u):
     return {"id": u["id"], "login": u["login"], "name": u["name"], "role": u["role"],
             "must_change_password": u["must_change_password"], "free_autofix": has_free_access(u),
             "subscription": subscription_state(u), "email_verified": bool(u["email_verified"]),
+            "autofix_credits": u["autofix_credits"],
             "packs": [{"key": k, "short": PACKS[k].short, "title": PACKS[k].title,
                        "profiles": list(PACKS[k].profiles)} for k in assigned_packs(u["id"])]}
 
@@ -279,9 +305,18 @@ def autofix_access(u):
     if has_free_access(u):
         return "free", None
     sub = subscription_state(u)
-    if sub["active"]:
-        return ("subscription", None) if sub["left"] > 0 else (None, "limit_reached")
-    return None, "payment_required"
+    if sub["active"] and sub["left"] > 0:
+        return "subscription", None
+    if u["autofix_credits"] > 0:
+        return "credit", None
+    return None, "limit_reached" if sub["active"] else "payment_required"
+
+
+def consume_credit(u):
+    """Списать одно оплаченное исправление (после того как исправленный файл выдан)."""
+    with engine.begin() as c:
+        c.execute(update(users).where(users.c.id == u["id"], users.c.autofix_credits > 0)
+                  .values(autofix_credits=users.c.autofix_credits - 1))
 
 
 def record_autofix(u):
@@ -530,7 +565,8 @@ def admin_list():
                 assigned.setdefault(uid, []).append(key)
     import legal
     return jsonify(users=[_admin_row(r, sorted(assigned.get(r["id"], []))) for r in rows],
-                   db_ephemeral=DB_IS_EPHEMERAL, legal_missing=legal.missing())
+                   db_ephemeral=DB_IS_EPHEMERAL, legal_missing=legal.missing(),
+                   payments_enabled=payments.enabled(), payments_test=payments.test_mode())
 
 
 def _create(c, name, login_=None, role="user"):
@@ -827,3 +863,152 @@ def password_reset():
         row = c.execute(select(users).where(users.c.id == row["id"])).mappings().first()
     _start_session(row)
     return jsonify(user=public_user(row), autofix_enabled=can_autofix())
+
+# ── оплата ────────────────────────────────────────────────────────────────
+
+def _site():
+    return (os.environ.get("SITE_URL") or request.host_url).rstrip("/")
+
+
+def _order_public(o):
+    return {"id": o["id"], "kind": o["kind"], "amount": o["amount"], "status": o["status"],
+            "upload_id": o["upload_id"], "profile": o["profile"],
+            "standards": [s for s in (o["standards"] or "").split(",") if s], "file_name": o["file_name"],
+            "created_at": o["created_at"].isoformat() if o["created_at"] else None}
+
+
+def _fulfill(order_id):
+    """Начислить оплаченное ровно один раз (повторные уведомления и обновления страницы — без эффекта)."""
+    with engine.begin() as c:
+        claimed = c.execute(update(orders).where(orders.c.id == order_id, orders.c.fulfilled.is_(False))
+                            .values(fulfilled=True)).rowcount
+        if not claimed:
+            return
+        o = c.execute(select(orders).where(orders.c.id == order_id)).mappings().first()
+        if o["kind"] == "autofix":
+            c.execute(update(users).where(users.c.id == o["user_id"])
+                      .values(autofix_credits=users.c.autofix_credits + 1))
+        else:
+            row = c.execute(select(users.c.subscription_until).where(users.c.id == o["user_id"])).first()
+            start = max(_now(), _aware(row[0]) or _now())
+            c.execute(update(users).where(users.c.id == o["user_id"])
+                      .values(subscription_until=start + timedelta(days=30)))
+    log.info("заказ %s оплачен и выполнен", order_id)
+
+
+def sync_order(order_id):
+    """Узнать статус платежа у ЮKassa и, если оплачен, выполнить заказ. Возвращает заказ из базы."""
+    with engine.connect() as c:
+        o = c.execute(select(orders).where(orders.c.id == order_id)).mappings().first()
+    if not o or not o["payment_id"] or (o["status"] != "pending" and o["fulfilled"] == (o["status"] == "succeeded")):
+        return o
+    p = payments.get_payment(o["payment_id"])
+    paid = (p.get("status") == "succeeded" and p.get("paid")
+            and (p.get("metadata") or {}).get("order_id") == order_id
+            and float((p.get("amount") or {}).get("value", 0)) == float(o["amount"]))
+    status = "succeeded" if paid else "canceled" if p.get("status") == "canceled" else "pending"
+    if status != o["status"]:
+        with engine.begin() as c:
+            c.execute(update(orders).where(orders.c.id == order_id).values(
+                status=status, paid_at=_now() if status == "succeeded" else None))
+    if status == "succeeded":
+        _fulfill(order_id)
+    with engine.connect() as c:
+        return c.execute(select(orders).where(orders.c.id == order_id)).mappings().first()
+
+
+@bp.post("/api/orders")
+@login_required
+def order_create():
+    """Заказ: {"kind": "autofix" | "subscription", "upload_id", "profile", "standards", "file_name"}."""
+    if not payments.enabled():
+        return jsonify(error="Оплата подключается и скоро заработает.", code="payments_disabled"), 503
+    u = current_user()
+    if not u["email_verified"]:
+        return jsonify(error="Подтвердите почту — на неё придут ответы по оплате и возвратам.",
+                       code="email_unverified"), 403
+    data = request.get_json(silent=True) or {}
+    kind = data.get("kind")
+    if kind not in ("autofix", "subscription"):
+        return jsonify(error="Неизвестный товар."), 400
+    amount = AUTOFIX_PRICE if kind == "autofix" else SUBSCRIPTION_PRICE
+    order_id = payments.new_order_id()
+    stds = data.get("standards") or []
+    with engine.begin() as c:
+        c.execute(insert(orders).values(
+            id=order_id, user_id=u["id"], kind=kind, amount=amount, status="pending", created_at=_now(),
+            upload_id=(data.get("upload_id") or None) if kind == "autofix" else None,
+            profile=(data.get("profile") or None) if kind == "autofix" else None,
+            standards=",".join(stds)[:200] if kind == "autofix" and isinstance(stds, list) else None,
+            file_name=(data.get("file_name") or "")[:255] or None))
+    description = (f"Автоисправление оформления работы, заказ {order_id[:8]}" if kind == "autofix"
+                   else f"Подписка на 30 дней ({SUBSCRIPTION_LIMIT} автоисправлений в месяц), заказ {order_id[:8]}")
+    try:
+        payment_id, url = payments.create_payment(order_id, amount, description, f"{_site()}/pay/{order_id}")
+    except payments.PaymentError:
+        with engine.begin() as c:
+            c.execute(update(orders).where(orders.c.id == order_id).values(status="canceled"))
+        return jsonify(error="Не удалось создать платёж. Попробуйте ещё раз через минуту."), 502
+    with engine.begin() as c:
+        c.execute(update(orders).where(orders.c.id == order_id).values(payment_id=payment_id))
+    return jsonify(order_id=order_id, confirmation_url=url), 201
+
+
+@bp.get("/api/orders/<order_id>")
+@login_required
+def order_status(order_id):
+    u = current_user()
+    with engine.connect() as c:
+        o = c.execute(select(orders).where(orders.c.id == order_id)).mappings().first()
+    if not o or (o["user_id"] != u["id"] and u["role"] != "admin"):
+        return jsonify(error="Заказ не найден."), 404
+    try:
+        o = sync_order(order_id)
+    except payments.PaymentError:
+        pass   # ЮKassa недоступна — покажем последний известный статус, страница спросит ещё раз
+    _load_user()   # начисление могло изменить исправления и подписку
+    return jsonify(order=_order_public(o), user=public_user(current_user()), autofix_enabled=can_autofix())
+
+
+@bp.post("/api/payments/webhook")
+def payments_webhook():
+    """
+    Уведомление ЮKassa (payment.succeeded / payment.canceled). Тело — только подсказка, какой
+    платёж проверить: статус и сумму всё равно берём из API ЮKassa.
+    """
+    obj = (request.get_json(silent=True) or {}).get("object") or {}
+    payment_id = str(obj.get("id") or "")[:64]
+    if not payment_id:
+        return jsonify(ok=True)
+    with engine.connect() as c:
+        o = c.execute(select(orders.c.id).where(orders.c.payment_id == payment_id)).first()
+    if o:
+        try:
+            sync_order(o[0])
+        except payments.PaymentError:
+            return jsonify(error="retry"), 502   # ЮKassa повторит уведомление позже
+    return jsonify(ok=True)
+
+
+@bp.get("/api/admin/orders")
+@admin_required
+def admin_orders():
+    with engine.connect() as c:
+        rows = c.execute(select(orders, users.c.login).join(users, users.c.id == orders.c.user_id, isouter=True)
+                         .where(orders.c.status != "pending")
+                         .order_by(orders.c.created_at.desc()).limit(300)).mappings().all()
+    return jsonify(orders=[{
+        "id": r["id"], "login": r["login"], "kind": r["kind"], "amount": r["amount"], "status": r["status"],
+        "paid_at": _aware(r["paid_at"]).isoformat() if r["paid_at"] else None,
+        "receipt_issued": r["receipt_issued"]} for r in rows if r["status"] == "succeeded"])
+
+
+@bp.patch("/api/admin/orders/<order_id>")
+@admin_required
+def admin_order_update(order_id):
+    value = bool((request.get_json(silent=True) or {}).get("receipt_issued"))
+    with engine.begin() as c:
+        res = c.execute(update(orders).where(orders.c.id == order_id).values(receipt_issued=value))
+    if not res.rowcount:
+        return jsonify(error="Заказ не найден."), 404
+    return jsonify(ok=True)

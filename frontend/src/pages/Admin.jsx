@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
 import {
-  adminBulk, adminCreate, adminDelete, adminPackSettings, adminPacks, adminReset, adminUpdate, adminUsers,
+  adminBulk, adminCreate, adminDelete, adminOrderUpdate, adminOrders, adminPackSettings, adminPacks, adminReset,
+  adminUpdate, adminUsers,
 } from "../api.js";
 import { useSession } from "../ProfilesContext.jsx";
 import { Field, Icon, attr, submitOnEnter } from "../ui.jsx";
@@ -115,6 +116,49 @@ function PackCard({ pack, onSaved }) {
   );
 }
 
+const fmtDateTime = (iso) => (iso ? new Date(iso).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" }) : "—");
+
+/** Оплаты: самозанятый выдаёт чек в «Мой налог» на каждую — отметка помогает ничего не пропустить. */
+function Orders() {
+  const [orders, setOrders] = useState(null);
+  const load = () => adminOrders().then((r) => setOrders(r.orders)).catch(() => setOrders([]));
+  useEffect(() => { load(); }, []);
+  if (!orders) return null;
+  const pending = orders.filter((o) => !o.receipt_issued);
+  return (
+    <>
+      <div className="list-head">
+        <h2 className="title-large">Оплаты {orders.length > 0 && <span className="muted">({orders.length})</span>}</h2>
+      </div>
+      <p className="body-medium muted supporting">
+        На каждую оплату выдайте чек в приложении «Мой налог» (доход от физлица, сумма и дата — как здесь)
+        и отметьте его. {pending.length > 0 && <b>Без чека: {pending.length}.</b>}
+      </p>
+      {orders.length === 0 ? (
+        <p className="body-medium muted">Оплат пока нет.</p>
+      ) : (
+        <ul className="user-list">
+          {orders.map((o) => (
+            <li key={o.id} className="user-row">
+              <div className="user-main">
+                <span className="title-medium">
+                  {o.amount}&nbsp;₽ · {o.kind === "subscription" ? "подписка на 30 дней" : "автоисправление"}
+                </span>
+                <span className="body-medium muted"><code>{o.login}</code> · {fmtDateTime(o.paid_at)}</span>
+              </div>
+              <label className="check body-medium">
+                <input type="checkbox" checked={o.receipt_issued}
+                       onChange={async (e) => { await adminOrderUpdate(o.id, { receipt_issued: e.target.checked }); load(); }} />
+                Чек выдан
+              </label>
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
+  );
+}
+
 function UserRow({ u, me, packs, onChanged, onCredentials }) {
   const [busy, setBusy] = useState(false);
   async function act(fn, confirmText) {
@@ -221,7 +265,8 @@ export default function Admin() {
   const [packs, setPacks] = useState([]);
 
   const load = () => adminUsers()
-    .then((r) => setList({ users: r.users, ephemeral: r.db_ephemeral, legalMissing: r.legal_missing, error: null }))
+    .then((r) => setList({ users: r.users, ephemeral: r.db_ephemeral, legalMissing: r.legal_missing,
+                           paymentsTest: r.payments_enabled && r.payments_test, error: null }))
     .catch((e) => setList({ users: null, ephemeral: false, error: e.message }));
 
   const loadPacks = () => adminPacks().then((r) => setPacks(r.packs)).catch(() => setPacks([]));
@@ -273,6 +318,15 @@ export default function Admin() {
         </div>
       )}
 
+      {list.paymentsTest && (
+        <div className="banner banner-info body-medium" role="status">
+          <Icon name="info" />
+          <span>
+            ЮKassa подключена в тестовом режиме (ключ test_…): платите тестовыми картами из документации ЮKassa,
+            настоящие деньги не списываются. Для приёма оплаты замените ключ на боевой (live_…).
+          </span>
+        </div>
+      )}
       {list.legalMissing?.length > 0 && (
         <div className="banner banner-error body-medium" role="alert">
           <Icon name="error" />
@@ -346,6 +400,8 @@ export default function Admin() {
           {!filtered.length && <li className="body-medium muted empty">Никого не нашли.</li>}
         </ul>
       )}
+
+      <Orders />
 
       {packs.length > 0 && (
         <>
