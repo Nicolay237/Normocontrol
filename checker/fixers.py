@@ -271,6 +271,8 @@ class _Fixer:
         for it in list(self.chk.headings_missing_new_page(items)):
             it["obj"].paragraph_format.page_break_before = True
             self.done("Заголовок начат с новой страницы")
+        if self.move_misplaced_captions(items):
+            items = self.chk.prepare()   # абзацы переехали — пустые строки ищем по новому порядку
         self.remove_extra_empty(items)
         if self.n["bib_standard"] == "7.0.100":   # исправитель знает правила только ГОСТ Р 7.0.100
             self.fix_bibliography(items)
@@ -580,6 +582,28 @@ class _Fixer:
 
             if _replace_spans(ts, edits):
                 self.done("Исправлено оформление записей в списке источников")
+
+    def move_misplaced_captions(self, items):
+        """Название таблицы — над таблицей (п. 6.6.3), подпись рисунка — под рисунком (п. 6.5.7)."""
+        moved = False
+        for k, it in enumerate(items):
+            if not it.get("misplaced"):
+                continue
+            step = -1 if it["role"] == "table_caption" else +1
+            j = k + step
+            while 0 <= j < len(items) and items[j]["kind"] == "p" and items[j]["role"] == "empty":
+                j += step
+            if not 0 <= j < len(items):
+                continue
+            target = items[j]["obj"]._element
+            if step < 0:
+                target.addprevious(it["obj"]._p)   # название — перед таблицей
+                self.done("Название таблицы перенесено над таблицей")
+            else:
+                target.addnext(it["obj"]._p)       # подпись — после рисунка
+                self.done("Подпись перенесена под рисунок")
+            moved = True
+        return moved
 
     def remove_extra_empty(self, items):
         prev_empty = False

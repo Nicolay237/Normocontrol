@@ -91,9 +91,18 @@ def body(doc, text=LOREM):
     return doc.add_paragraph(text)
 
 
+def toc(doc):
+    """СОДЕРЖАНИЕ — обязательный структурный элемент (ГОСТ 7.32-2017, п. 4.1)."""
+    structural(doc, "СОДЕРЖАНИЕ", page_break=False)
+    for line in ("Введение	3", "1 Теоретические основы	4", "Заключение	5"):
+        p = doc.add_paragraph(line)
+        p.paragraph_format.first_line_indent = Cm(0)
+
+
 def good_document():
     doc = new_document()
-    structural(doc, "ВВЕДЕНИЕ", page_break=False)
+    toc(doc)
+    structural(doc, "ВВЕДЕНИЕ")
     for _ in range(3):
         body(doc)
     doc.add_heading("1 Теоретические основы", level=1)

@@ -297,7 +297,7 @@ def test_missing_required_sections(tmp_path):
     for _ in range(8):
         md.body(doc)
     r = check(doc, tmp_path)
-    assert len([i for i in r.issues if i.category == "Структура"]) == 3
+    assert len([i for i in r.issues if i.category == "Структура"]) == 4   # содержание, введение, заключение, список источников
 
 
 def test_image_paragraphs_are_not_empty_lines(tmp_path):

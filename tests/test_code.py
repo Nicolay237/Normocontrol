@@ -41,7 +41,8 @@ def caption(doc, text):
 
 def work(**code_kw):
     doc = md.new_document()
-    md.structural(doc, "ВВЕДЕНИЕ", page_break=False)
+    md.toc(doc)
+    md.structural(doc, "ВВЕДЕНИЕ")
     md.body(doc)
     md.body(doc, "Алгоритм Дейкстры реализован так (листинг 1) [1].")
     caption(doc, code_kw.pop("caption", "Листинг 1 – Алгоритм Дейкстры"))

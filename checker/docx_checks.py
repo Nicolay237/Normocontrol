@@ -30,6 +30,8 @@ MONO_FONTS = {
     "noto sans mono", "sf mono",
 }
 CODE_STYLE_RE = re.compile(r"code|listing|листинг|preformatted|исходн|программ|\bкод", re.IGNORECASE)
+# «– Название» после номера подписи: так подпись отличается от фразы «Таблица 1 показывает…»
+DASH_REST_RE = re.compile(r"^\s*[–—-]\s*\S")
 LISTING_RE = re.compile(r"^\s*(Листинг)(\.?)\s*(\d+(?:\.\d+)?|[А-ЯA-Z]\.\d+)(.*)$", re.IGNORECASE | re.DOTALL)
 # строка кода, набранная обычным шрифтом: ключевое слово в начале или много «программных» символов
 CODE_KEYWORD_RE = re.compile(
@@ -252,10 +254,31 @@ class DocxChecker:
                 if (nxt and nxt["kind"] == "tbl") or is_caption_style:
                     it["role"] = "table_caption"
                     continue
+                if DASH_REST_RE.match(m_tab.group(4)):
+                    # «Таблица 1.1 – Название», а таблицы под ним нет: она над названием (название
+                    # не на своём месте), удалена или не вставлена; таблица картинкой — всё-таки таблица
+                    prv = next_nonempty(it["i"], -1)
+                    it["role"] = "table_caption"
+                    if prv and prv["kind"] == "tbl":
+                        it["misplaced"] = True
+                    else:
+                        it["orphan"] = not (nxt and nxt["kind"] == "p" and has_image(nxt["obj"]))
+                    continue
             if m_fig and len(text) < 300:
                 prv = next_nonempty(it["i"], -1)
                 if (prv and prv["kind"] == "p" and has_image(prv["obj"])) or is_caption_style:
                     it["role"] = "figure_caption"
+                    continue
+                if DASH_REST_RE.match(m_fig.group(4)):
+                    # «Рисунок 2 – Название» без рисунка над ним; рисунок, привязанный к соседнему
+                    # абзацу или стоящий в таблице, ищем на три блока выше
+                    it["role"] = "figure_caption"
+                    nxt = next_nonempty(it["i"], +1)
+                    if nxt and nxt["kind"] == "p" and has_image(nxt["obj"]):
+                        it["misplaced"] = True     # подпись над рисунком
+                    else:
+                        it["orphan"] = not any(b["kind"] == "tbl" or has_image(b["obj"])
+                                               for b in items[max(0, it["i"] - 3):it["i"]])
                     continue
 
             if LISTING_RE.match(text) and len(text) < 300:
@@ -344,8 +367,9 @@ class DocxChecker:
             k = block[-1]["i"] + 1
             while k < len(items) and items[k]["role"] == "empty":
                 k += 1
-            if k < len(items) and items[k]["role"] == "body" and FIG_RE.match(self.text(items[k]["obj"]).strip())                     and len(self.text(items[k]["obj"])) < 300:
-                items[k]["role"] = "figure_caption"
+            if k < len(items) and items[k]["role"] in ("body", "figure_caption") \
+                    and FIG_RE.match(self.text(items[k]["obj"]).strip())                     and len(self.text(items[k]["obj"])) < 300:
+                items[k]["role"], items[k]["orphan"] = "figure_caption", False
 
     def code_blocks(self, items):
         """Листинги: списки подряд идущих элементов с ролью "code"."""
@@ -832,6 +856,19 @@ class DocxChecker:
                 if not m:
                     continue
                 loc = self._loc(p)
+                if it.get("misplaced") and role == "table_caption":
+                    self.report.add(loc, "Подписи к рисункам и таблицам",
+                                    "название таблицы стоит под таблицей, а ставится над ней (п. 6.6.3)")
+                elif it.get("misplaced"):
+                    self.report.add(loc, "Подписи к рисункам и таблицам",
+                                    "подпись стоит над рисунком, а ставится под ним (п. 6.5.7)")
+                elif it.get("orphan") and role == "table_caption":
+                    self.report.add(loc, "Подписи к рисункам и таблицам",
+                                    "под названием таблицы нет самой таблицы — она удалена или не вставлена")
+                elif it.get("orphan"):
+                    self.report.add(loc, "Подписи к рисункам и таблицам",
+                                    "над подписью нет рисунка — он удалён или вставлен так, что Word не видит его "
+                                    "как рисунок (например, фигурами без группировки)")
                 word, dot, num, rest = m.groups()
                 if word != full or dot:
                     self.report.add(loc, "Подписи к рисункам и таблицам",
