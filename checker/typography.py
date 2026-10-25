@@ -7,6 +7,10 @@ import re
 SPACE_BEFORE_SIMPLE = re.compile(r"(?<=[^\s\d]) +([,;!?])(?=\s|$)")
 SPACE_BEFORE_DOT = re.compile(r"(?<=[^\s\d.…]) +([.:])(?=\s|$)")
 MULTI_SPACE = re.compile(r"(?<=\S)  +(?=\S)")
+# «метод - это» — дефис с пробелами между словами вместо тире; между цифрами и в формулах не трогаем
+# строка кода посреди текста («return abs(a - b);»): там дефис — это минус
+CODE_LIKE = re.compile(r"[{};=]|\b\w+\([^)]*\)")
+HYPHEN_AS_DASH = re.compile(r"(?<=[А-Яа-яЁёA-Za-z»)])\s-\s(?=[А-Яа-яЁёA-Za-z«(])")
 
 
 def check_typography(labeled, report):
@@ -41,5 +45,7 @@ def check_typography(labeled, report):
         m = None if role == "bib" else (SPACE_BEFORE_SIMPLE.search(text) or SPACE_BEFORE_DOT.search(text))
         if m:
             report.add(loc, "Пробелы", f"лишний пробел перед знаком препинания «{m.group(1)}»")
+        if role in ("body", "list") and HYPHEN_AS_DASH.search(text) and not CODE_LIKE.search(text):
+            report.add(loc, "Пробелы", "между словами вместо дефиса с пробелами ставится тире: «слово – слово»")
         if role not in ("heading", "structural") and (text.startswith(" ") or text.startswith("\t")):
             report.add(loc, "Пробелы", "текст начинается с пробела/табуляции вместо красной строки")

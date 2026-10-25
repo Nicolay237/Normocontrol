@@ -25,13 +25,13 @@ from docx.shared import Pt, Cm, RGBColor
 from docx.text.paragraph import Paragraph
 
 from .docx_checks import (
-    DocxChecker, ALT_FONTS, BULLET_MARKERS, CHAPTER_NUMBER_RE, FIG_RE, TAB_RE,
+    DocxChecker, ALT_FONTS, HEADING_NUMBER_PREFIX_RE, BULLET_MARKERS, CHAPTER_NUMBER_RE, FIG_RE, TAB_RE,
     DASHES, STRUCT_APPENDIX_RE, _toc_level, ends_with_sentence_dot,
 )
 from .docx_utils import get_all_runs, run_in_hyperlink, has_image, has_page_break, emu_to_cm
 from .report import Report
 from . import bibliography as bib
-from .typography import SPACE_BEFORE_SIMPLE, SPACE_BEFORE_DOT, MULTI_SPACE
+from .typography import SPACE_BEFORE_SIMPLE, SPACE_BEFORE_DOT, MULTI_SPACE, HYPHEN_AS_DASH, CODE_LIKE
 
 TNR = "Times New Roman"
 
@@ -264,6 +264,17 @@ class _Fixer:
                 if self.res.first_line_indent_cm(p, 12) > self.n["first_line_indent_tolerance_cm"]:
                     _set_first_line(p, 0)
                     self.done("Убран абзацный отступ в листинге")
+            elif role == "appendix_title":
+                # заголовок приложения: по центру, без точки в конце (ГОСТ 7.32-2017, 6.17)
+                if self.res.alignment(p) != "center":
+                    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    _set_first_line(p, 0)
+                    self.done("Заголовок приложения выровнен по центру")
+                if ends_with_sentence_dot(p.text.strip()):
+                    for t in reversed([t for t in _wts(p) if (t.text or "").strip()]):
+                        t.text = t.text.rstrip()[:-1]
+                        break
+                    self.done("Убрана точка в конце заголовка")
             if role not in ("empty", "image"):
                 prev_formula = False
             if role in ("body", "list", "heading", "structural", "figure_caption", "table_caption"):
@@ -462,8 +473,15 @@ class _Fixer:
                 self.done("Убрана точка после номера раздела")
                 ts = [t for t in _wts(p) if (t.text or "")]
                 text = "".join((t.text or "") for t in ts)
-            if text[:1].islower():
-                ts[0].text = (ts[0].text or "")[:1].upper() + (ts[0].text or "")[1:]
+            # первая буква после номера раздела: «2.1 структура» → «2.1 Структура»
+            pos = len(HEADING_NUMBER_PREFIX_RE.match(text).group(0)) if HEADING_NUMBER_PREFIX_RE.match(text) else 0
+            if text[pos:pos + 1].islower():
+                for t in ts:
+                    tt = t.text or ""
+                    if pos < len(tt):
+                        t.text = tt[:pos] + tt[pos].upper() + tt[pos + 1:]
+                        break
+                    pos -= len(tt)
                 self.done("Заголовок начат с прописной буквы")
 
         if ends_with_sentence_dot(text):
@@ -509,6 +527,8 @@ class _Fixer:
             if id(p._p) not in self._bib_ids:   # в записях списка « : » и « ; » — по ГОСТ Р 7.0.100
                 new = SPACE_BEFORE_SIMPLE.sub(r"\1", new)
                 new = SPACE_BEFORE_DOT.sub(r"\1", new)
+                if role in ("body", "list") and not CODE_LIKE.search(old):
+                    new = HYPHEN_AS_DASH.sub(" – ", new)
             if new != old:
                 t.text = new
                 changed = True
@@ -551,6 +571,9 @@ class _Fixer:
 
             m_num = bib.NUM_PREFIX.match(full)
             head_at = m_num.end() if m_num and not self.res.is_numbered(p) else 0
+            if head_at and (m_num.group(1).startswith("[") or m_num.group(2) != "."):
+                # «2)», «[2]», «2» → «2.» (ГОСТ 7.32-2017, п. 6.16)
+                edits.append((m_num.start(), m_num.end(), f"{m_num.group(1).strip('[]')}. "))
             rest = full[head_at:]
             m = bib.HEAD_NO_COMMA.match(rest)
             if m:
@@ -560,6 +583,12 @@ class _Fixer:
                 if m:
                     edits.append((head_at + m.end(), head_at + m.end(), " "))
 
+            for mm in bib.OLD_ER.finditer(full):
+                # «[Электронный ресурс]» в ГОСТ Р 7.0.100-2018 нет («Текст : электронный» можно не писать)
+                start = mm.start()
+                while start > 0 and full[start - 1] == " ":
+                    start -= 1
+                edits.append((start, mm.end(), ""))
             for mm in bib.HYPHEN_SEP.finditer(full):
                 edits.append((mm.start(), mm.end(), " – "))
             for mm in bib.NO_SPACE_NUMBER.finditer(full):
@@ -603,6 +632,19 @@ class _Fixer:
                 target.addnext(it["obj"]._p)       # подпись — после рисунка
                 self.done("Подпись перенесена под рисунок")
             moved = True
+        # подпись листинга под кодом → над кодом (если над кодом подписи нет)
+        for block in self.chk.code_blocks(items):
+            above = block[0]["i"] - 1
+            while above >= 0 and items[above]["role"] == "empty":
+                above -= 1
+            below = block[-1]["i"] + 1
+            while below < len(items) and items[below]["role"] == "empty":
+                below += 1
+            if below < len(items) and items[below]["role"] == "listing_caption" \
+                    and not (above >= 0 and items[above]["role"] == "listing_caption"):
+                block[0]["obj"]._p.addprevious(items[below]["obj"]._p)
+                self.done("Подпись листинга перенесена над кодом")
+                moved = True
         return moved
 
     def remove_extra_empty(self, items):

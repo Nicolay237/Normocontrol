@@ -53,6 +53,7 @@ FIG_RE = re.compile(r"^\s*(Рис(?:унок)?)(\.?)\s*(\d+(?:\.\d+)?|[А-ЯA-Z]
 TAB_RE = re.compile(r"^\s*(Табл(?:ица)?)(\.?)\s*(\d+(?:\.\d+)?|[А-ЯA-Z]\.\d+)(.*)$", re.IGNORECASE | re.DOTALL)
 CHAPTER_NUMBER_RE = re.compile(
     r"^(?:(?:РАЗДЕЛ|ГЛАВА)\s+)?(\d+(?:\.\d+)*)(\.)?(?=\s|$)", re.IGNORECASE)
+HEADING_NUMBER_PREFIX_RE = re.compile(r"^\s*(?:(?:РАЗДЕЛ|ГЛАВА)\s+)?\d+(?:\.\d+)*\.?\s*", re.IGNORECASE)
 NUMBERED_HEADING_RE = re.compile(r"^\d+(?:\.\d+){0,3}\.?\s+\S")
 
 
@@ -750,7 +751,9 @@ class DocxChecker:
                 if m and m.group(2):
                     self.report.add(loc, "Оформление заголовка",
                                     "после номера раздела/подраздела не должно быть точки (п. 6.4.1)")
-                if text[:1].islower():
+                # первая буква — после номера: «2.1 структура данных» тоже ошибка
+                first = HEADING_NUMBER_PREFIX_RE.sub("", text)[:1]
+                if first.islower():
                     self.report.add(loc, "Оформление заголовка", "заголовок должен начинаться с прописной буквы")
                 if n["heading_align"] == "center" and res.alignment(p) != "center":
                     self.report.add(loc, "Оформление заголовка", "заголовок располагается посередине страницы")
