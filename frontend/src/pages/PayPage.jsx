@@ -5,6 +5,7 @@ import { useSession } from "../ProfilesContext.jsx";
 import AutoFix from "../components/AutoFix.jsx";
 import ReportView from "../components/ReportView.jsx";
 import { Icon } from "../ui.jsx";
+import { goal } from "../metrika.js";
 
 const POLL_MS = 2500;
 const POLL_FOR_MS = 5 * 60 * 1000; // СБП и 3-D Secure иногда подтверждаются не сразу
@@ -59,6 +60,17 @@ export default function PayPage() {
 
   const { order, error } = state;
   const paidFix = order?.status === "succeeded" && order.kind === "autofix" && order.upload_id;
+
+  // оплата — цель в Метрике с суммой; один раз на заказ, даже если страницу обновили
+  useEffect(() => {
+    if (order?.status !== "succeeded") return;
+    const key = `paid-goal:${order.id}`;
+    try {
+      if (localStorage.getItem(key)) return;
+      localStorage.setItem(key, "1");
+    } catch (e) { /* без хранилища — цель может повториться, не страшно */ }
+    goal("paid", { order_price: order.amount, currency: "RUB", kind: order.kind });
+  }, [order?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // отчёт по работе, загруженной перед оплатой
   useEffect(() => {

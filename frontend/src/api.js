@@ -1,3 +1,5 @@
+import { goal } from "./metrika.js";
+
 async function parse(resp) {
   if (resp.ok) return resp.json();
   const problem = await resp.json().catch(() => ({}));
@@ -22,13 +24,15 @@ export function api(url, { method = "GET", body } = {}) {
 // ── аккаунт ──
 export const login = (login, password) => api("/api/login", { method: "POST", body: { login, password } });
 export const register = (email, password, name, consent) =>
-  api("/api/register", { method: "POST", body: { email, password, name, consent } });
+  api("/api/register", { method: "POST", body: { email, password, name, consent } })
+    .then((res) => { goal("register"); return res; });
 export const verifyEmail = (code) => api("/api/email/verify", { method: "POST", body: { code } });
 export const resendCode = () => api("/api/email/resend", { method: "POST", body: {} });
 export const forgotPassword = (email) => api("/api/password/forgot", { method: "POST", body: { email } });
 export const resetPassword = (email, code, password) =>
   api("/api/password/reset", { method: "POST", body: { email, code, password } });
-export const createOrder = (body) => api("/api/orders", { method: "POST", body });
+export const createOrder = (body) => api("/api/orders", { method: "POST", body })
+  .then((res) => { goal(body.kind === "subscription" ? "order_sub" : "order_autofix"); return res; });
 export const fetchOrder = (id) => api(`/api/orders/${id}`);
 export const adminOrders = () => api("/api/admin/orders");
 export const adminOrderUpdate = (id, data) => api(`/api/admin/orders/${id}`, { method: "PATCH", body: data });
@@ -92,11 +96,18 @@ export function checkFile(file, profile, onProgress, standards) {
   data.append("file", file);
   data.append("profile", profile);
   if (standards) data.append("standards", standards.join(","));
-  return postForm("/api/check", data, onProgress);
+  return postForm("/api/check", data, onProgress)
+    .then((res) => { goal("check_done", { profile, issues: res.total }); return res; });
 }
 
 /** Исправление: сначала по upload_id (файл уже на сервере), если он устарел — отправляем файл заново. */
-export async function fixFile({ uploadId, file, profile, standards, onProgress }) {
+export async function fixFile(args) {
+  const res = await fixFileOnce(args);
+  goal("autofix_done");
+  return res;
+}
+
+async function fixFileOnce({ uploadId, file, profile, standards, onProgress }) {
   if (uploadId) {
     const data = new FormData();
     data.append("upload_id", uploadId);

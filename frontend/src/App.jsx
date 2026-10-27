@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { NavLink, Link, Route, Routes, useLocation } from "react-router-dom";
 import { ProfilesProvider, useSession } from "./ProfilesContext.jsx";
 import { Icon, Logo } from "./ui.jsx";
@@ -13,6 +14,18 @@ import Verify from "./pages/Verify.jsx";
 import Forgot from "./pages/Forgot.jsx";
 import PayPage from "./pages/PayPage.jsx";
 import ThemeToggle from "./components/ThemeToggle.jsx";
+import { hit } from "./metrika.js";
+
+/** Просмотр в Метрике на каждый переход; откладываем, чтобы страница успела поставить свой title
+ * (requestAnimationFrame не годится: в фоновой вкладке он не срабатывает). */
+function PageViews() {
+  const { pathname, search } = useLocation();
+  useEffect(() => {
+    const id = setTimeout(() => hit(pathname + search), 0);
+    return () => clearTimeout(id);
+  }, [pathname, search]);
+  return null;
+}
 
 function UserButton() {
   const { user } = useSession();
@@ -34,9 +47,14 @@ function UserButton() {
   );
 }
 
+// страницы с почтой, платежами и паролями — Вебвизор Метрики их текст и ввод не записывает
+const PRIVATE_PAGES = /^\/(admin|account|pay|login|register|forgot|verify)(\/|$)/;
+
 export default function App() {
+  const { pathname } = useLocation();
   return (
     <ProfilesProvider>
+      <PageViews />
       <header className="app-bar">
         <div className="container app-bar-inner">
           <Link to="/" className="brand title-large">
@@ -54,7 +72,7 @@ export default function App() {
         </div>
       </header>
 
-      <main>
+      <main className={PRIVATE_PAGES.test(pathname) ? "ym-hide-content ym-disable-keys" : undefined}>
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/vkr" element={<CheckPage profileKey="vkr" />} />
