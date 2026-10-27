@@ -447,8 +447,10 @@ def me():
     return jsonify(user=public_user(current_user()), autofix_enabled=can_autofix())
 
 
-def _client_ip():
-    return request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()
+def client_ip():
+    # за Caddy адрес клиента подставляет ProxyFix (BEHIND_PROXY); сам заголовок X-Forwarded-For
+    # не читаем — его может прислать кто угодно и так обойти лимиты
+    return request.remote_addr or ""
 
 
 def _start_session(row):
@@ -474,7 +476,7 @@ def register():
         return jsonify(error=err), 400
     if data.get("consent") is not True:   # 152-ФЗ: согласие — отдельное явное действие
         return jsonify(error="Нужно согласие с офертой и на обработку персональных данных."), 400
-    key = f"register:{_client_ip()}"
+    key = f"register:{client_ip()}"
     if _too_many(key, REGISTER_WINDOW, REGISTER_LIMIT):
         return jsonify(error="Слишком много регистраций с вашего адреса. Попробуйте через час."), 429
 
@@ -502,7 +504,7 @@ def login():
     data = request.get_json(silent=True) or {}
     login_ = normalize_login(data.get("login"))
     password = data.get("password") or ""
-    ip = _client_ip()
+    ip = client_ip()
     keys = (f"ip:{ip}", f"login:{login_}")
     if any(_too_many(k) for k in keys):
         return jsonify(error="Слишком много неудачных попыток. Попробуйте через 15 минут."), 429
@@ -837,7 +839,7 @@ def password_forgot():
     if not mailer.enabled():
         return jsonify(error="Восстановление пароля по почте пока недоступно. Напишите администратору."), 503
     email = normalize_login((request.get_json(silent=True) or {}).get("email"))
-    keys = (f"forgot-ip:{_client_ip()}", f"forgot:{email}")
+    keys = (f"forgot-ip:{client_ip()}", f"forgot:{email}")
     if not EMAIL_RE.match(email):
         return jsonify(error="Укажите email, с которым вы регистрировались."), 400
     if _too_many(keys[0], MAIL_WINDOW, 10) or _too_many(keys[1], MAIL_WINDOW, 3):

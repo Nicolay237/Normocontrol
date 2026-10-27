@@ -192,7 +192,7 @@ def test_migrate_users_between_databases(tmp_path):
 def register(c, email, password="secret-pass-1", ip="10.0.0.1", **extra):
     extra.setdefault("consent", True)
     return c.post("/api/register", json={"email": email, "password": password, **extra},
-                  headers={"X-Forwarded-For": ip})
+                  environ_base={"REMOTE_ADDR": ip})
 
 
 def test_registered_user_pays_until_admin_grants_free_access():

@@ -14,3 +14,15 @@ os.environ.pop("RENDER", None)
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+
+import pytest  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limits():
+    """Счётчики лимитов общие на процесс: каждый тест начинает с чистого листа."""
+    yield
+    auth = sys.modules.get("auth")
+    if auth is not None:
+        auth._FAILS.clear()

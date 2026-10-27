@@ -19,6 +19,8 @@ import os
 import ssl
 import smtplib
 import logging
+import threading
+import time
 from email.message import EmailMessage
 from email.utils import formataddr, make_msgid
 
@@ -74,3 +76,60 @@ def code_letter(kind, code, site):
             f"Если вы ничего не запрашивали, просто проигнорируйте это письмо.\n\n"
             f"— Нормоконтроль, {site}\n")
     return subject, text
+
+
+# ── письма администратору о сбоях ─────────────────────────────────────────
+
+class AlertHandler(logging.Handler):
+    """Ошибки из журнала — письмом на ALERT_EMAIL (или CONTACT_EMAIL).
+
+    Одинаковые ошибки не чаще раза в REPEAT секунд, всего не больше DAILY писем в сутки:
+    при массовом сбое почта не должна превратиться в спам. Отправка — в отдельном потоке,
+    чтобы пользователь не ждал SMTP."""
+
+    REPEAT, DAILY = 30 * 60, 30
+
+    def __init__(self, to):
+        super().__init__(logging.ERROR)
+        self.to = to
+        self._sent = {}          # первая строка ошибки → когда отправляли
+        self._day = (None, 0)    # (дата, сколько писем за неё)
+        self._lock = threading.Lock()
+
+    def _allow(self, key, now):
+        with self._lock:
+            day = time.strftime("%Y-%m-%d", time.localtime(now))
+            count = self._day[1] if self._day[0] == day else 0
+            if count >= self.DAILY or now - self._sent.get(key, 0) < self.REPEAT:
+                return False
+            self._sent[key] = now
+            self._day = (day, count + 1)
+            return True
+
+    def emit(self, record):
+        try:
+            text = self.format(record)
+            if not self._allow(f"{record.name}:{record.getMessage()[:200]}", record.created):
+                return
+            subject = f"Сбой на сайте: {record.getMessage()[:80]}"
+            threading.Thread(target=self._send, args=(subject, text), daemon=True).start()
+        except Exception:
+            self.handleError(record)
+
+    def _send(self, subject, text):
+        try:
+            send(self.to, subject, text)
+        except Exception as e:  # письмо о сбое не должно рождать новый сбой
+            log.warning("письмо о сбое не отправлено: %s", e)
+
+
+def install_alerts(*loggers):
+    """Подключает AlertHandler к журналам, если почта настроена и есть кому писать."""
+    to = os.environ.get("ALERT_EMAIL", "").strip() or os.environ.get("CONTACT_EMAIL", "").strip()
+    if not (to and enabled()):
+        return None
+    handler = AlertHandler(to)
+    handler.setFormatter(logging.Formatter("%(asctime)s %(name)s %(levelname)s\n%(message)s"))
+    for lg in loggers:
+        lg.addHandler(handler)
+    return handler

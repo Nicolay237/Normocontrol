@@ -75,6 +75,10 @@ def _is_tnr(fontname):
     return "timesnewroman" in n or n.startswith("times") or "liberationserif" in n
 
 
+# дальше не читаем: ~0,05 с на страницу, а сервер один на всех
+PDF_MAX_PAGES = 200
+
+
 def check_pdf(path, report, n):
     import pdfplumber
 
@@ -98,6 +102,10 @@ def check_pdf(path, report, n):
             report.add("Документ", "Общее", "в PDF не найдено ни одной страницы")
             return
         n_pages = len(pdf.pages)
+        if n_pages > PDF_MAX_PAGES:
+            report.note(f"В PDF {n_pages} страниц — проверены первые {PDF_MAX_PAGES}. "
+                        "Работу целиком проверит файл Word (.docx).")
+            n_pages = PDF_MAX_PAGES
         front = _front_pages(pdf)
         if front:
             report.note("Титульный лист и задание оформляются по своим формам — в PDF они не проверялись."
@@ -106,7 +114,7 @@ def check_pdf(path, report, n):
         sizes_seen = Counter()
         page_dims = None
 
-        for p_idx, page in enumerate(pdf.pages, start=1):
+        for p_idx, page in enumerate(pdf.pages[:n_pages], start=1):
             page_w, page_h = page.width, page.height
             page_dims = page_dims or (page_w, page_h)
             if p_idx in front:

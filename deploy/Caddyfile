@@ -10,5 +10,16 @@ www.{$DOMAIN} {
 	request_body {
 		max_size 25MB
 	}
-	reverse_proxy app:8080
+	# браузеру: только HTTPS, не встраивать сайт в чужие фреймы, не угадывать тип файлов
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Frame-Options "DENY"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-Server
+	}
+	reverse_proxy app:8080 {
+		header_down -Server
+	}
 }

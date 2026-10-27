@@ -5,6 +5,7 @@
 import os
 import re
 import json
+import logging
 import gzip
 import html as html_lib
 import time
@@ -12,6 +13,7 @@ import uuid
 import shutil
 import tempfile
 import threading
+import zipfile
 from urllib.parse import quote
 
 from flask import Flask, request, jsonify, Response, send_from_directory, send_file, redirect
@@ -24,6 +26,7 @@ from checker.fixers import fix_docx, estimate_fixable
 from checker.annotate import annotate_docx
 import auth
 import legal
+import mailer
 import seo
 from auth import can_autofix, current_user, public_user, packs_for_check
 from checker.packs import PACKS
@@ -42,10 +45,18 @@ if os.environ.get("BEHIND_PROXY"):
 
 ALLOWED_EXT = {".docx", ".pdf"}
 
+# проверок с одного IP за окно: студенту с запасом, скрипту — нет
+CHECK_WINDOW, CHECK_LIMIT = 10 * 60, 30
+# распакованный .docx: текст работы занимает единицы МБ, больше — «zip-бомба» или мусор
+DOCX_MAX_UNPACKED = 200 * 1024 * 1024
+
 # Учётки университета: вход по логину/паролю от администратора (см. auth.py).
 # Проверка доступна всем; автоисправление — вошедшим пользователям университета
 # (для остальных позже появится оплата).
 auth.init_app(app, BASE_DIR)
+
+# сбои проверки, оплаты и необработанные ошибки — письмом владельцу сайта
+mailer.install_alerts(app.logger, logging.getLogger("normocontrol"))
 
 
 # ── короткоживущее хранилище файлов на диске ──────────────────────────────
@@ -202,9 +213,16 @@ def api_check():
     if ext not in ALLOWED_EXT:
         return jsonify(error="Поддерживаются только файлы .docx и .pdf."), 400
 
+    rate_key = f"check:{auth.client_ip()}"
+    if auth._too_many(rate_key, CHECK_WINDOW, CHECK_LIMIT):
+        return jsonify(error="Слишком много проверок подряд. Подождите несколько минут."), 429
+    auth._fail(rate_key)
+
     with tempfile.TemporaryDirectory() as tmp:
         path = os.path.join(tmp, "upload" + ext)  # имя пользователя на диск не попадает
         f.save(path)
+        if ext == ".docx" and _unpacked_size(path) > DOCX_MAX_UNPACKED:
+            return jsonify(error="Файл не похож на обычную работу Word: после распаковки он слишком большой."), 400
         packs = packs_for_check(current_user())
         try:
             report = run_normocontrol_cached(path, profile, packs, stds)
@@ -218,6 +236,15 @@ def api_check():
         upload_id = store.put("upload", f.filename, src_path=path) if ext == ".docx" else None
 
     return jsonify(_report_payload(report, f.filename, upload_id, profile, stds, packs, ext))
+
+
+def _unpacked_size(path):
+    """Сколько займёт .docx после распаковки (повреждённый архив — 0, его отвергнет проверка)."""
+    try:
+        with zipfile.ZipFile(path) as z:
+            return sum(i.file_size for i in z.infolist())
+    except zipfile.BadZipFile:
+        return 0
 
 
 def _report_payload(report, filename, upload_id, profile, stds, packs, ext):
