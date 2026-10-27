@@ -51,7 +51,9 @@ services:
       - "443:443"
       - "443:443/udp"
     volumes:
-      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # папка, а не один файл: git pull заменяет Caddyfile новым файлом, и смонтированный
+      # по отдельности файл в контейнере остался бы старым
+      - ./deploy:/etc/caddy:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
