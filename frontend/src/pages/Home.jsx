@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useProfiles } from "../ProfilesContext.jsx";
 import { Icon } from "../ui.jsx";
 import useBuy from "../components/useBuy.js";
+import ExampleReport, { Faq } from "../components/ExampleReport.jsx";
 
 const CARDS = [
   { key: "vkr", icon: "vkr", fallback: "Выпускная квалификационная работа" },
@@ -104,7 +105,9 @@ export default function Home({ notFound }) {
           );
         })}
       </div>
+      <ExampleReport />
       <Pricing />
+      <Faq />
       <Link to="/gost" className="list-link label-large home-gost">
         <Icon name="info" size={20} /> Требования ГОСТ 7.32-2017 к оформлению: поля, шрифт, заголовки, подписи
         <Icon name="forward" size={18} />

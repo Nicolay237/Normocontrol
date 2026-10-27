@@ -3,6 +3,7 @@
 
 import os
 import re
+import sys
 
 import pytest
 
@@ -93,3 +94,19 @@ def test_verification_meta(monkeypatch):
     html = client().get("/").data.decode()
     assert '<meta name="yandex-verification" content="abc123">' in html
     assert '<meta name="google-site-verification" content="g-456">' in html
+
+
+@needs_dist
+def test_home_has_faq_and_example_report():
+    html = client().get("/").get_data(as_text=True)
+    assert '"@type": "FAQPage"' in html and "Безопасно ли загружать работу?" in html
+    assert '<a href="/refund">правилах возврата</a>' in html      # ссылка в ответе для поисковиков
+    assert "[[/refund" not in html.split('application/ld+json')[2]  # в JSON-LD — без разметки ссылок
+    assert "Как выглядит отчёт" in html
+
+
+def test_home_example_is_a_real_report():
+    """Пример на главной — актуальный отчёт сервиса (иначе перезапустить scripts/make_home_example.py)."""
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
+    from make_home_example import example
+    assert server.seo.HOME["example"] == example()

@@ -592,3 +592,28 @@ button.price-card:focus-visible { outline: 2px solid var(--md-sys-color-primary)
   .user-row { align-items: flex-start; }
   .panel md-filled-button { align-self: stretch; }
 }
+
+/* ── главная: пример отчёта и частые вопросы ── */
+.example, .faq { margin-top: 48px; display: grid; gap: 16px; }
+.example h2, .faq h2, .example > p { margin: 0; }
+.example-frame {
+  position: relative; padding: 16px; border-radius: var(--shape-lg);
+  border: 1px dashed var(--md-sys-color-outline); background: var(--md-sys-color-surface);
+}
+.example-tag { position: absolute; top: -10px; right: 16px; }
+.example-frame .summary-text h3 { font-weight: 400; margin: 0 0 4px; }
+.example-fix {
+  margin-top: 12px; display: flex; gap: 12px; align-items: center; padding: 12px var(--pad);
+  border-radius: var(--shape-md); background: var(--md-sys-color-tertiary-container);
+  color: var(--md-sys-color-on-tertiary-container);
+}
+.example-fix .summary-icon { width: 36px; height: 36px; background: var(--md-sys-color-tertiary); color: var(--md-sys-color-on-tertiary); }
+.example-fix .summary-icon svg { width: 20px; height: 20px; }
+.example-more { margin: 0; padding: 4px var(--pad) 12px; color: var(--md-sys-color-on-surface-variant); }
+.example-cta { display: flex; flex-wrap: wrap; gap: 12px; }
+.faq .accordion { margin-top: 0; }
+.faq-answer { margin: 0; padding: 0 var(--pad) 16px; color: var(--md-sys-color-on-surface-variant); }
+@media (max-width: 600px) {
+  .example-frame { padding: 12px 8px; }
+  .example-cta .link-btn, .example-cta md-filled-button, .example-cta md-outlined-button { width: 100%; }
+}

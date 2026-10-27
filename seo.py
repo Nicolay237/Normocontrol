@@ -34,6 +34,14 @@ def _load_gost():
 GOST = _load_gost()
 
 
+def _load_home():
+    with open(os.path.join(BASE_DIR, "content", "home.json"), encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+HOME = _load_home()   # частые вопросы и пример отчёта главной (тот же файл читает фронтенд)
+
+
 # ── публичные страницы ────────────────────────────────────────────────────
 
 def _profile_page(key, path, title, description):
@@ -60,7 +68,22 @@ def _home_body():
         '<ul><li><a href="/vkr">Проверка выпускной квалификационной работы (ВКР, диплом)</a></li>'
         '<li><a href="/coursework">Проверка курсовой работы и реферата</a></li>'
         '<li><a href="/gost">Требования ГОСТ 7.32-2017 к оформлению</a></li></ul>'
+        + _example_html() + "<h2>Частые вопросы</h2>"
+        + "".join(f"<h3>{e(f['q'])}</h3><p>{_legal_text(f['a'])}</p>" for f in HOME["faq"])
     )
+
+
+def _example_html():
+    ex = HOME["example"]
+    items = "".join(f"<li>{e(c['name'])}: {c['count']}</li>" for c in ex["categories"])
+    return (f"<h2>Как выглядит отчёт</h2><p>Пример проверки курсовой работы: {ex['total']} замечаний "
+            f"по разделам, у каждого — страница, абзац и требование ГОСТ. После автоисправления "
+            f"осталось {ex['after_fix']}.</p><ul>{items}</ul>")
+
+
+def _plain(s):
+    """Текст без разметки [[/путь|ссылок]] — для JSON-LD."""
+    return _LINK.sub(lambda m: m.group(2), s)
 
 
 def _gost_body():
@@ -170,11 +193,12 @@ def _jsonld(page, base):
         "inLanguage": "ru", "description": PAGES["/"]["description"],
         "offers": {"@type": "Offer", "price": "0", "priceCurrency": "RUB"},
     }]
-    if page["path"] == "/gost":
+    faq = {"/gost": GOST["faq"], "/": HOME["faq"]}.get(page["path"])
+    if faq:
         data.append({
             "@context": "https://schema.org", "@type": "FAQPage",
             "mainEntity": [{"@type": "Question", "name": f["q"],
-                            "acceptedAnswer": {"@type": "Answer", "text": f["a"]}} for f in GOST["faq"]],
+                            "acceptedAnswer": {"@type": "Answer", "text": _plain(f["a"])}} for f in faq],
         })
     return "".join(
         '<script type="application/ld+json">' + json.dumps(d, ensure_ascii=False).replace("</", "<\\/") + "</script>"

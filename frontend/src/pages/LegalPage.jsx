@@ -12,7 +12,7 @@ export const LEGAL_LINKS = [
 ];
 
 /** Текст документа: [[/путь|текст]] — внутренняя ссылка. */
-function Rich({ text }) {
+export function Rich({ text }) {
   const parts = [];
   const rx = /\[\[(\/[a-z-]*)\|([^\]]+)\]\]/g;
   let pos = 0;
