@@ -185,7 +185,7 @@ export default function AutoFix({ file, uploadId, profileKey, standards, total =
       ) : (
         <md-filled-button onClick={run} disabled={attr(loading)}>
           <Icon name="fix" slot="icon" />
-          Исправить и скачать
+          Исправить
         </md-filled-button>
       )}
       {state.error && (
