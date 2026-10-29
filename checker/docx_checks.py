@@ -42,6 +42,13 @@ CODE_KEYWORD_RE = re.compile(
     r"if\s*\(|for\s*\(|while\s*\(|switch\s*\(|catch\s*\(|if\s+.+:$|for\s+.+\s+in\s+.+:$|while\s+.+:$)",
 )
 CODE_CHARS = set("{}();=<>[]+*&|!")
+# строки, которые сами по себе на код не похожи, но внутри листинга встречаются постоянно:
+# комментарии, строки документации, присваивания «result = []», строки с отступом из пробелов
+CODE_WEAK_RE = re.compile(
+    r"^\s*(?:#(?!\s*\d)|//|/\*|\*/|\"\"\"|''')"
+    r"|^\s*[A-Za-z_][\w.\[\]'\"]*\s*(?:[-+*/%]?=)\s*\S"
+    r"|^ {4,}\S*[A-Za-z_]"
+)
 # библиографические записи и ссылки на сайты — не код, даже если в них много скобок и знаков
 NOT_CODE_RE = re.compile(r"https?://|www\.|URL\s*:|\s//\s|дата обращения", re.IGNORECASE)
 LIST_MARKERS = re.compile(r"^\s*([-–—•·*▪●○]|\d+[.)]|[а-яa-z]\))\s+", re.IGNORECASE)
@@ -50,6 +57,15 @@ TOC_TAIL_RE = re.compile(r"(?:[\t.…]{2,}|\t)\s*\d+\s*$")
 STRUCT_APPENDIX_RE = re.compile(r"^ПРИЛОЖЕНИЕ(?:\s+[А-ЯA-Z])?$")
 DASHES = "–—-"
 FIG_RE = re.compile(r"^\s*(Рис(?:унок)?)(\.?)\s*(\d+(?:\.\d+)?|[А-ЯA-Z]\.\d+)(.*)$", re.IGNORECASE | re.DOTALL)
+# «Продолжение таблицы 3» над перенесённой частью таблицы (ГОСТ 7.32-2017, п. 6.6.6) — слева, без отступа
+TABLE_CONT_RE = re.compile(r"^\s*(?:Продолжение|Окончание)\s+табл(?:ицы|\.)\s*[\dА-ЯA-Z][\d.]*\s*$", re.IGNORECASE)
+# «Продолжение приложения Ж», «Продолжение листинга 2» — служебная надпись, не абзац текста
+OTHER_CONT_RE = re.compile(r"^\s*(?:Продолжение|Окончание)\s+(?:приложения|листинга)\s*[\dА-ЯA-Z][\d.]*\s*$",
+                           re.IGNORECASE)
+# формула, набранная обычным текстом, с номером справа: «E = a + b + c<Tab>(6.2)»
+FORMULA_TEXT_RE = re.compile(r"(?:\t|\s{2,})\(\d+(?:\.\d+)?\)\s*$")
+# перечень сокращений и термины пишут столбцом «НДС — налог на добавленную стоимость» (п. 5.5, 5.6)
+GLOSSARY_HEADINGS = ("СОКРАЩЕНИ", "ОБОЗНАЧЕНИ", "ТЕРМИНЫ И ОПРЕДЕЛЕНИЯ")
 TAB_RE = re.compile(r"^\s*(Табл(?:ица)?)(\.?)\s*(\d+(?:\.\d+)?|[А-ЯA-Z]\.\d+)(.*)$", re.IGNORECASE | re.DOTALL)
 CHAPTER_NUMBER_RE = re.compile(
     r"^(?:(?:РАЗДЕЛ|ГЛАВА)\s+)?(\d+(?:\.\d+)*)(\.)?(?=\s|$)", re.IGNORECASE)
@@ -131,12 +147,30 @@ def mark_front_matter(items):
     # если перед первым найденным структурным элементом уже идут разделы или сплошной текст,
     # значит, ВВЕДЕНИЕ и др. просто не распознаны — это не титульный лист
     before = items[:first]
-    if any(it["role"] == "heading" for it in before):
+    # подраздел или нумерованный раздел — это уже основная часть; ненумерованный «Заголовок 1»
+    # бывает и на титульном листе (название вуза, тема работы)
+    if any(it["role"] == "heading" and (it.get("level", 1) > 1 or NUMBERED_HEADING_RE.match(it["obj"].text.strip()))
+           for it in before):
         return
     if sum(1 for it in before if it["role"] == "body" and len(it["obj"].text) > 400) > 2:
         return
     for it in items[:first]:
         it["front_role"], it["role"] = it["role"], "front"
+
+
+def mark_glossary(items):
+    """
+    Строки перечня сокращений и обозначений, терминов и определений («НДС — налог на добавленную
+    стоимость») располагаются столбцом, без красной строки (ГОСТ 7.32-2017, п. 5.5, 5.6) —
+    роль "glossary": правила абзаца основного текста к ним не применяются.
+    """
+    inside = False
+    for it in items:
+        if it["role"] in ("structural", "heading"):
+            inside = it["role"] == "structural" and any(
+                h in _norm_caps(it["obj"].text) for h in GLOSSARY_HEADINGS)
+        elif inside and it["role"] in ("body", "list"):
+            it["role"] = "glossary"
 
 
 class DocxChecker:
@@ -219,7 +253,7 @@ class DocxChecker:
             if not text:
                 it["role"] = "image" if has_image(p) else "empty"
                 continue
-            if sname in TITLE_STYLES:
+            if sname in TITLE_STYLES and not _structural_name(text):
                 it["role"] = "skip"
                 continue
             if _is_toc(p, self.text(p)):
@@ -234,7 +268,8 @@ class DocxChecker:
                     caps_like = text.upper() == text
                     centered = self.res.alignment(p) == 'center'
                     bold = bool(runs) and all(self.res.bold(r, p) for r in runs)
-                    if lvl is not None or caps_like or centered or bold:
+                    appendix = bool(STRUCT_APPENDIX_RE.match(struct)) and struct != "ПРИЛОЖЕНИЕ"
+                    if lvl is not None or caps_like or centered or bold or appendix:
                         it["role"], it["level"] = "structural", lvl or 1
                         continue
                 if lvl is not None:
@@ -242,6 +277,17 @@ class DocxChecker:
                     continue
 
             if is_formula(p):
+                it["role"] = "formula"
+                continue
+
+            if TABLE_CONT_RE.match(text):
+                it["role"] = "table_cont"
+                continue
+            if OTHER_CONT_RE.match(text):
+                it["role"] = "skip"
+                continue
+            m_num = FORMULA_TEXT_RE.search(text)
+            if m_num and len(text) < 200 and ("=" in text or len(text[:m_num.start()].strip()) <= 3):
                 it["role"] = "formula"
                 continue
 
@@ -300,6 +346,7 @@ class DocxChecker:
         self.mark_code(items)
         self.mark_appendix_titles(items)
         mark_front_matter(items)
+        mark_glossary(items)
         return items
 
     # ── программный код ──────────────────────────────────────────────────
@@ -338,18 +385,21 @@ class DocxChecker:
                 p = it["obj"]
                 if self._mono(p) or CODE_STYLE_RE.search(style_name(p) or ""):
                     it["role"], it["code_font"] = "code", True
-        # код обычным шрифтом: не меньше трёх похожих на код строк подряд (пустые строки внутри — можно)
+        # код обычным шрифтом: не меньше трёх строк кода подряд, из них хотя бы две явно похожи на код
+        # (комментарии, присваивания и строки с отступом — только внутри такого блока; пустые строки — можно)
         i = 0
         while i < len(items):
-            j, lines = i, 0
+            j, lines, strong = i, 0, 0
             while j < len(items) and items[j]["kind"] == "p" and items[j]["role"] in textual:
                 text = self.text(items[j]["obj"])
                 if text.strip():
-                    if not self._code_like(text):
+                    if self._code_like(text):
+                        strong += 1
+                    elif not (strong and CODE_WEAK_RE.match(text) and not NOT_CODE_RE.search(text)):
                         break
                     lines += 1
                 j += 1
-            if lines >= 3:
+            if lines >= 3 and strong >= 2:
                 for it in items[i:j]:
                     if it["role"] != "empty" or (i < it["i"] < j - 1):
                         it["role"], it["code_font"] = "code", False
@@ -638,15 +688,26 @@ class DocxChecker:
             if role == "formula":
                 prev_formula = True
                 continue
-            if role not in ("body", "list", "figure_caption", "table_caption"):
+            if role not in ("body", "list", "figure_caption", "table_caption", "table_cont", "glossary"):
                 if role not in ("empty", "image"):
                     prev_formula = False
                 continue
             text = self.text(p).strip()
             loc = self._loc(p)
-            caption = role in ("figure_caption", "table_caption")
+            caption = role in ("figure_caption", "table_caption", "table_cont")
             self._check_runs(p, loc, False, size_floor_only=caption)
             self._check_spacing(p, loc, caption=caption)
+
+            if role == "glossary":      # столбец сокращений: шрифт и интервал — как у текста, отступ свой
+                prev_formula = False
+                continue
+            if role == "table_cont":
+                if res.alignment(p) not in ('left', 'justify') \
+                        or abs(res.first_line_indent_cm(p, self._first_size(p))) > tol_i:
+                    self.report.add(loc, "Подписи к рисункам и таблицам",
+                                    "надпись «Продолжение таблицы» пишется слева, без абзацного отступа (п. 6.6.6)")
+                prev_formula = False
+                continue
 
             if role == "list":
                 if BULLET_MARKERS.match(self.text(p)):

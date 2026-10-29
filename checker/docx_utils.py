@@ -246,6 +246,12 @@ class Resolver:
                 return None
             if val in ('', 'AUTO', '000000'):
                 return None
+            # почти чёрный серый (#0F1115, #1A1A1A — текст, скопированный из браузера) на бумаге
+            # от чёрного не отличить; тёмно-синий #0E2841 — уже не чёрный
+            if re.fullmatch(r'[0-9A-F]{6}', val):
+                rgb = [int(val[k:k + 2], 16) for k in (0, 2, 4)]
+                if max(rgb) <= 0x33 and max(rgb) - min(rgb) <= 0x18:
+                    return None
             return val
         return None
 
