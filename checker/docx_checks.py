@@ -507,7 +507,8 @@ class DocxChecker:
             self.check_body(items)
             self.check_headings(items)
             self.check_appendix_titles(items)
-            self.check_toc(items)
+            if self.n.get("toc_bold"):
+                self.check_toc(items)
             self.check_captions(items)
             self.check_code(items)
             self.check_tables(items)

@@ -254,7 +254,7 @@ class _Fixer:
             elif role in ("heading", "structural"):
                 self.fix_runs(p, heading=True)
                 self.fix_heading(p, role)
-            elif role == "toc":
+            elif role == "toc" and self.chk.n.get("toc_bold"):
                 self.fix_toc(p)
             elif role == "code":
                 # листинг: шрифт, отступы и интервалы кода не трогаем — только выравнивание по левому краю

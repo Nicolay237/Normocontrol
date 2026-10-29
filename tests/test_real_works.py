@@ -139,3 +139,27 @@ def test_formula_typed_as_text_and_appendix_continuation(tmp_path):
     msgs = [(i.location, i.category) for i in check(doc, tmp_path)
             if i.category in ("Красная строка", "Выравнивание")]
     assert not msgs, msgs
+
+
+def test_toc_bold_rule_is_optional(tmp_path):
+    """Жирные разделы в оглавлении — правило методичек, не ГОСТ: по умолчанию не проверяется (16 из 25 работ)."""
+    import copy
+    import sys, os
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
+    from make_sample_coursework import build
+    from mutations import m_toc_main_not_bold, m_toc_sub_bold
+    from checker.fixers import fix_docx
+    from checker.norms import PROFILES
+
+    doc = build()
+    m_toc_main_not_bold(doc)
+    m_toc_sub_bold(doc)
+    path = tmp_path / "toc.docx"
+    doc.save(path)
+    assert not [i for i in run_normocontrol(str(path), "vkr").issues if i.category == "Оформление оглавления"]
+
+    strict = dict(copy.deepcopy(PROFILES["vkr"]), toc_bold=True)
+    result = fix_docx(str(path), str(tmp_path / "fixed.docx"), strict)
+    before = {i.message for i in result.before.issues if i.category == "Оформление оглавления"}
+    assert any("выделен жирным" in m for m in before) and any("не должен быть жирным" in m for m in before)
+    assert not [i for i in result.after.issues if i.category == "Оформление оглавления"]

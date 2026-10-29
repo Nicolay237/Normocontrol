@@ -471,7 +471,7 @@ COMBINED = [
     "double_space", "space_before_comma", "indent_spaces", "hyphen_dash", "empty_lines", "bullet", "list_star",
     "heading_dot", "heading_number_dot", "heading_not_bold", "heading_underline", "heading_lowercase",
     "heading_size", "heading_color", "heading_no_break",
-    "struct_left", "struct_no_break", "struct_lowercase", "toc_sub_bold",
+    "struct_left", "struct_no_break", "struct_lowercase",
     "fig_dot", "fig_left", "fig_lowercase", "caption_small",
     "tab_indent", "tab_dot", "tab_cell_font", "tab_below",
     "code_justify", "listing_caption_below",
@@ -520,8 +520,7 @@ MUTATIONS = [
     Mutation("struct_dot", "Точка после «ЗАКЛЮЧЕНИЕ.»", "6.2.1: без точки", m_structural_dot, "точки"),
     Mutation("no_conclusion", "Нет заключения", "4.1: обязательный элемент", m_no_conclusion, "«ЗАКЛЮЧЕНИЕ»", standalone=True),
     Mutation("no_toc", "Нет содержания", "4.1: обязательный элемент", m_no_toc, "«СОДЕРЖАНИЕ»", standalone=True),
-    Mutation("toc_sub_bold", "Подразделы в содержании жирные", "методички", m_toc_sub_bold, "не должен быть жирным", True),
-    Mutation("toc_main_not_bold", "Разделы в содержании не жирные", "методички", m_toc_main_not_bold, "выделен жирным", True),
+    # жирность пунктов оглавления — требование отдельных методичек, по умолчанию выключено (test_real_works.py)
     # рисунки (6.5)
     Mutation("fig_short", "«Рис. 1»", "6.5.7: слово полностью", m_fig_short_word, "полностью", True),
     Mutation("fig_dot", "Точка в конце подписи", "6.5.7", m_fig_dot, "точка не ставится", True),
