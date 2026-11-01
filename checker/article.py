@@ -61,6 +61,16 @@ CITATION_RE = re.compile(r"\[(\d+(?:\s*[,;–—-]\s*\d+)*)(?:\s*,\s*[сcСpP]\.
 RANGE_RE = re.compile(r"(?<![\d.,\w])(\d+)-(\d+)(?![\d\w]|[.,]\d)")
 DECIMAL_DOT_RE = re.compile(r"(?<![\d.\w])\d+\.\d+(?![\d.\w])")
 SECTION_WORDS = {"введение", "заключение"}
+SUP = "¹²³⁴⁵⁶⁷⁸⁹⁰"
+# «Торнев А.М.1, Сидельников А.А.1, Хонина О.И.2» — авторы списком (сборники конференций)
+AUTHORS_LIST_RU_RE = re.compile(rf"^\s*(?:[А-ЯЁ][а-яё-]+\s+[А-ЯЁ]\.\s?(?:[А-ЯЁ]\.)?[\d{SUP},\s]*)+$")
+AUTHORS_LIST_EN_RE = re.compile(rf"^\s*(?:[A-Z][A-Za-z'-]+\s+[A-Z]\.\s?(?:[A-Z][a-z]?\.)?[\d{SUP},\s]*)+$")
+# «1 студент группы ИВБ-415», «² Assistant of the Department…» — должности авторов по номерам
+POSITION_RE = re.compile(rf"^\s*[\d{SUP}]\s*[^\d\s.]")
+# «Введение. Железнодорожный транспорт…» — заголовок в начале абзаца
+RUN_IN_RE = re.compile(r"^\s*(Введение|Заключение)\s*[.:]\s+\S", re.I)
+# «1.1. Аппаратная часть: …» — нумерованный подраздел, даже не жирный
+SUBSECTION_RE = re.compile(r"^\d+(?:\.\d+)+\.?\s+[А-ЯЁA-Z]")
 
 
 @dataclass
@@ -179,6 +189,28 @@ def _style_prefix(p, n, bold=True, italic=None, rest_bold=None, rest_italic=None
         pos += len(t)
 
 
+def _split_paragraph(p, k):
+    """Абзац делится по k-му символу: хвост уходит в новый абзац сразу после (с тем же оформлением)."""
+    pos = 0
+    for r in get_all_runs(p):
+        t = r.text
+        if pos < k < pos + len(t):
+            _split_run_at(r, k - pos)
+            break
+        pos += len(t)
+    new = _new_paragraph_after(p)
+    pos = 0
+    for r in get_all_runs(p):
+        if pos >= k:
+            new._p.append(r._r)
+        pos += len(r.text)
+    for t in _t_nodes(new):            # «. » между заголовком и текстом может лежать в нескольких runs
+        t.text = (t.text or "").lstrip(" .:")
+        if t.text:
+            break
+    return new
+
+
 def _t_nodes(p):
     return [t for t in p._p.iter(qn("w:t"))]
 
@@ -220,6 +252,11 @@ def _strip_end(p, chars="."):
 def _latin_share(s):
     letters = [ch for ch in s if ch.isalpha()]
     return sum("a" <= ch.lower() <= "z" for ch in letters) / len(letters) if letters else 0
+
+
+def _is_caps(s):
+    letters = [ch for ch in s if ch.isalpha()]
+    return len(letters) >= 10 and sum(ch.isupper() for ch in letters) / len(letters) > 0.85
 
 
 def _is_heading_style(p):
@@ -286,6 +323,11 @@ class ArticleFormatter:
         self.tables = 0
         self.table_labels = 0
         self.gaps = 0
+        self.title_el = None         # название (строка прописными среди строк шапки)
+        self.title_p = self.udc_p = None
+        self.en_head = []            # английский блок в начале статьи — переносится в конец
+        self.last_main = None        # последний абзац списка источников / дат — после него английский блок
+        self.authors_list = False
 
     # -- страница и стили
     def page(self):
@@ -312,6 +354,16 @@ class ArticleFormatter:
     def run(self):
         self.page()
         blocks = list(iter_blocks(self.doc))
+        # название среди строк шапки до аннотации: строка прописными (в сборниках — после авторов)
+        for kind, obj in blocks:
+            if kind != "p":
+                continue
+            t = _text(obj)
+            if ABSTRACT_RU_RE.match(t) or t.lower().rstrip(".") in SECTION_WORDS:
+                break
+            if _is_caps(t) and _latin_share(t) < 0.3 and not UDC_RE.match(t) and len(t.split()) >= 3:
+                self.title_el = obj._p
+                break
         zone = "head"
         head_seen = Counter()
         prev_head = None             # роль предыдущего непустого абзаца шапки
@@ -335,6 +387,7 @@ class ArticleFormatter:
             if zone in ("refs", "body") and DATES_RU_RE.match(text):
                 self.plain(p, HEAD_PT, L)
                 self.found["dates_ru"] += 1
+                self.last_main = p._p
                 zone = "dates"
                 continue
             if zone in ("refs", "dates") and _latin_share(text) > 0.6 and not DATES_RU_RE.match(text):
@@ -349,13 +402,18 @@ class ArticleFormatter:
 
             if zone == "head":
                 role = self.head_role(p, text, head_seen, prev_head)
+                if role == "en":
+                    en_prev = self.english(p, text, en_prev)
+                    self.en_head.append(p._p)
+                    continue
                 if role == "body":
                     zone = "body"
                 else:
                     head_seen[role] += 1
                     # блоки шапки разделены пустой строкой; подряд идут только авторы одной
                     # организации и строки её адреса
-                    if prev_head and not (role == prev_head and role in ("author", "affiliation")):
+                    same = role == prev_head and role in ("author", "affiliation", "abstract")
+                    if prev_head and not same and not (prev_head == "authors_list" and role == "affiliation"):
                         self.gaps += _gap_before(p)
                     self.head(p, role, text)
                     prev_head = role
@@ -365,8 +423,10 @@ class ArticleFormatter:
                 pending_table_title = self.body(p, text, pending_table_title)
             elif zone == "refs":
                 self.ref_entry(p, text)
+                self.last_main = p._p
             elif zone == "dates":
                 self.plain(p, HEAD_PT, L)
+                self.last_main = p._p
             elif zone == "en":
                 if REFS_EN_RE.match(text):
                     _set_text(p, "REFERENCES")
@@ -379,9 +439,33 @@ class ArticleFormatter:
             elif zone == "en_refs":
                 self.plain(p, REFS_PT, J, indent=INDENT_CM)
 
+        self.reorder()
         self.spacing()
         self.summary(head_seen)
         return self.res
+
+    # -- порядок частей как в шаблоне: название сразу после УДК, английский блок — в конце
+    def reorder(self):
+        if self.title_p is not None and self.udc_p is not None:
+            nxt = self.udc_p._p.getnext()
+            while nxt is not None and nxt.tag == qn("w:p") and not Paragraph(nxt, self.doc).text.strip():
+                nxt = nxt.getnext()
+            if nxt is not self.title_p._p:
+                self.udc_p._p.addnext(self.title_p._p)
+                _gap_before(self.title_p)
+                after = self.title_p._p.getnext()
+                if after is not None and after.tag == qn("w:p") and Paragraph(after, self.doc).text.strip():
+                    _gap_before(Paragraph(after, self.doc))
+                self.res.done["Название перенесено сразу после УДК, как в шаблоне"] += 1
+        if self.en_head and self.last_main is not None:
+            anchor = self.last_main
+            gap = OxmlElement("w:p")
+            anchor.addnext(gap)
+            anchor = gap
+            for el in self.en_head:
+                anchor.addnext(el)
+                anchor = el
+            self.res.done["Английский блок перенесён в конец статьи, после списка источников"] += 1
 
     # -- шапка
     def head_role(self, p, text, seen, prev):
@@ -397,13 +481,21 @@ class ArticleFormatter:
             return "thanks"
         if SPECIALTY_RE.match(text):
             return "specialty"
-        if text.lower().rstrip(".") in SECTION_WORDS or _is_heading_style(p):
+        if _latin_share(text) > 0.6:
+            return "en"
+        if text.lower().rstrip(".") in SECTION_WORDS or RUN_IN_RE.match(text) or _is_heading_style(p):
             return "body"
-        after_abstract = seen["abstract"] or seen["keywords"] or seen["specialty"]
-        if after_abstract:
+        if seen["keywords"] or seen["specialty"] or seen["thanks"]:
             return "body"
-        if not seen["title"]:
+        if seen["abstract"]:
+            return "abstract"            # второй абзац аннотации
+        if self.title_el is not None:
+            if p._p is self.title_el:
+                return "title"
+        elif not seen["title"]:
             return "title"
+        if AUTHORS_LIST_RU_RE.match(text):
+            return "authors_list"
         if AUTHOR_RU_RE.match(text) or re.search(r"Научные\s+интересы|E-?mail", text, re.I):
             return "author"
         if seen["citation"]:
@@ -413,12 +505,18 @@ class ArticleFormatter:
     def head(self, p, role, text):
         self.found[role] += 1
         if role == "udc":
+            self.udc_p = p
             m = UDC_RE.match(text)
             _set_text(p, f"УДК {m.group(1).strip()}".rstrip())
             self.plain(p, HEAD_PT, L, bold=False)
         elif role == "title":
+            self.title_p = p
             _strip_end(p)
+            _typography(p, self.typo)
             self.plain(p, TITLE_PT, J, bold=True)
+        elif role == "authors_list":
+            self.authors_list = True
+            self.plain(p, HEAD_PT, J, bold=True)
         elif role == "author":
             _typography(p, self.typo)
             _replace_text(p, lambda s: re.sub(r"(?<=\S) [–-] (?=\S)", " — ", s, count=1))
@@ -429,6 +527,7 @@ class ArticleFormatter:
             if re.search(r"E-?mail\s*:?\s*\S+@\S+\.$", p.text, re.I):
                 _strip_end(p)
         elif role == "affiliation":
+            _typography(p, self.typo)
             self.plain(p, HEAD_PT, J, bold=False)
         elif role == "citation":
             self.plain(p, HEAD_PT, J, bold=False)
@@ -437,8 +536,12 @@ class ArticleFormatter:
             _typography(p, self.typo)
             self.plain(p, HEAD_PT, J)
             m = ABSTRACT_RU_RE.match(p.text)
-            _style_prefix(p, m.end(), bold=True)
-            self.abstract_ru = p.text[m.end():].strip()
+            if m:
+                _style_prefix(p, m.end(), bold=True)
+                self.abstract_ru = p.text[m.end():].strip()
+            else:                           # продолжение аннотации
+                self.found[role] -= 1
+                self.abstract_ru = ((self.abstract_ru or "") + " " + p.text.strip()).strip()
         elif role == "keywords":
             _strip_end(p, ".;")
             self.plain(p, HEAD_PT, J)
@@ -496,6 +599,18 @@ class ArticleFormatter:
             self.found["figure"] += 1
             return False
 
+        m_run = RUN_IN_RE.match(text)
+        if m_run:
+            rest = _split_paragraph(p, len(m_run.group(1)) + (len(p.text) - len(p.text.lstrip())))
+            self.gaps += _gap_before(p)
+            _strip_end(p, ".:")
+            self.plain(p, BODY_PT, J, bold=True, italic=False, spacing=0.9)
+            for r in get_all_runs(p):
+                r.font.small_caps = True
+            self.found["heading"] += 1
+            self.res.done["Заголовок «Введение» / «Заключение» вынесен отдельной строкой"] += 1
+            return self.body(rest, _text(rest), False)
+
         if self.is_heading(p, text):
             self.gaps += _gap_before(p)
             _strip_end(p)
@@ -522,6 +637,8 @@ class ArticleFormatter:
         if text.lower().rstrip(".") in SECTION_WORDS:
             return True
         if _is_heading_style(p):
+            return True
+        if SUBSECTION_RE.match(text) and len(text.split()) <= 15 and not text.endswith((".", ";", ":", ",")):
             return True
         if text.endswith((".", ":", ";", ",")) and not re.match(r"^\d+(\.\d+)*\.\s", text):
             return False
@@ -576,7 +693,16 @@ class ArticleFormatter:
             _style_prefix(p, KEYWORDS_EN_RE.match(p.text).end(), bold=True, rest_bold=False)
             self.found["keywords_en"] += 1
             return "keywords"
-        if prev is None:
+        first_line = text.split("\n")[0]
+        if AUTHORS_LIST_EN_RE.match(first_line):
+            self.plain(p, HEAD_PT, J, bold=False)
+            _style_prefix(p, len(p.text.split("\n")[0]), bold=True, rest_bold=False)
+            self.found["author_en"] += 1
+            return "author"
+        if POSITION_RE.match(text) or re.search(r"Universit|Institut|Academ|Department", text):
+            self.plain(p, HEAD_PT, J, bold=False)
+            return "affiliation"
+        if _is_caps(text) or (prev is None and not self.found["title_en"]):
             _strip_end(p)
             self.plain(p, TITLE_PT, J, bold=True)
             self.found["title_en"] += 1
@@ -644,13 +770,23 @@ class ArticleFormatter:
             d["Буква «ё» заменена на «е» (кроме слов с прописной — фамилий)"] += self.typo["yo"]
 
         # чего не хватает
+        if self.authors_list:
+            d["Авторы и должности — 12 пт"] += 1
+            w.append("Авторы указаны списком «Фамилия И.О.¹, …». В шаблоне журнала каждый автор — отдельной "
+                     "строкой: «Фамилия Имя Отчество — уч. степень, уч. звание, должность. Научные интересы: … "
+                     "E-mail: …», затем организация с адресом.")
+        if self.title_p is not None and _is_caps(self.title_p.text):
+            w.append("Название набрано прописными буквами — в шаблоне оно строчными, с прописной первой "
+                     "(аббревиатуры оставьте как есть).")
+        if self.en_head and self.last_main is None:
+            w.append("Английский блок стоит в начале статьи — по шаблону он идёт после списка источников.")
         for key, label in (("udc", "УДК (подберите на teacode.com/online/udc)"), ("title", "название статьи"),
                            ("author", "сведения об авторах (ФИО — степень, звание, должность, научные "
                                       "интересы, E-mail)"),
                            ("citation", "строка «Для цитирования: …»"), ("abstract", "аннотация"),
                            ("keywords", "ключевые слова"),
                            ("specialty", "шифр научной специальности (1–2 шифра из списка редакции)")):
-            if not f[key]:
+            if not f[key] and not (key == "author" and self.authors_list):
                 w.append(f"Не найдено: {label}.")
         if self.abstract_ru is not None and not 800 <= len(self.abstract_ru) <= 1200:
             w.append(f"Объём аннотации {len(self.abstract_ru)} знаков с пробелами — нужно 800–1200.")

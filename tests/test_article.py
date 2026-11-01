@@ -222,3 +222,65 @@ def test_article_rejects_pdf():
     r = adm.post("/api/article/format", data={"file": (io.BytesIO(b"%PDF-1.4"), "a.pdf")},
                             content_type="multipart/form-data")
     assert r.status_code == 400
+
+
+# ── статья в формате сборника: авторы списком, название прописными, английский блок до текста ──
+
+def conference_draft():
+    doc = Document()
+    add = doc.add_paragraph
+    add("УДК 004.896")
+    add("Торнев А.М.1, Сидельников А.А.1, Забродин А.В.2")
+    add("Петербургский государственный университет путей сообщения Императора Александра I")
+    add("1 студент группы ИВБ-415")
+    add("2 к.и.н., доцент кафедры “Информационные и вычислительные системы”")
+    add("ИНТЕЛЛЕКТУАЛЬНАЯ СИСТЕМА ТЕХНИЧЕСКОГО ОСМОТРА РЕЛЬСОВОГО ПУТИ").runs[0].bold = True
+    add("Аннотация. " + ABSTRACT[:500])
+    add("Рассматриваются конкретные технологические решения и их эффект.")
+    add("Ключевые слова: рельсы, осмотр, робот, нейросеть, лидар, камеры, автоматизация.")
+    add("Tornev A.M.1, Sidelnikov A.A.1, Zabrodin A.V.2")
+    add("Emperor Alexander I St. Petersburg State Transport University")
+    add("AN INTELLIGENT SYSTEM FOR TECHNICAL INSPECTION OF RAIL TRACKS")
+    add("Abstract. This paper addresses the inspection of rail tracks.")
+    add("Keywords: rail tracks, inspection, robot.")
+    p = add("")
+    p.add_run("Введение").bold = True
+    p.add_run(".").bold = True
+    p.add_run(" Железнодорожный транспорт остается ключевым элементом экономики [1].")
+    add("1.1. Аппаратная часть: роботизированная платформа")
+    add("Главной частью является автономная каретка [2].")
+    add("Заключение").runs[0].bold = True
+    add("Система сокращает время осмотра.")
+    add("Библиографический список:")
+    add("Лидар // Wikipedia. URL: https://ru.wikipedia.org/wiki/Лидар (дата обращения: 01.11.2025).")
+    add("Классификация дефектов рельсов. М., 2020. 12 с.")
+    return doc
+
+
+def test_conference_style_article(tmp_path):
+    src, dst = tmp_path / "conf.docx", tmp_path / "conf_out.docx"
+    conference_draft().save(src)
+    result = format_article(str(src), str(dst))
+    doc = Document(str(dst))
+    texts = [p.text.strip() for p in doc.paragraphs]
+    nonempty = [t for t in texts if t]
+    # название — сразу после УДК, затем авторы и должности
+    assert nonempty[:3] == ["УДК 004.896", "ИНТЕЛЛЕКТУАЛЬНАЯ СИСТЕМА ТЕХНИЧЕСКОГО ОСМОТРА РЕЛЬСОВОГО ПУТИ",
+                            "Торнев А.М.1, Сидельников А.А.1, Забродин А.В.2"]
+    assert size(para(doc, "ИНТЕЛЛЕКТУАЛЬНАЯ")) == 24 and para(doc, "Торнев").runs[0].bold
+    assert "«Информационные и вычислительные системы»" in para(doc, "2 к.и.н.").text
+    # аннотация из двух абзацев — 12 пт, не основной текст
+    assert size(para(doc, "Рассматриваются")) == 12
+    # «Введение.» вынесено отдельным заголовком
+    intro = para(doc, "Введение")
+    assert intro.text == "Введение" and intro.runs[0].font.small_caps
+    assert para(doc, "Железнодорожный").text.startswith("Железнодорожный")
+    # подраздел «1.1. …» без жирного — заголовок
+    assert para(doc, "1.1. Аппаратная").runs[0].bold
+    # английский блок — в конце, после списка источников
+    assert nonempty.index("Tornev A.M.1, Sidelnikov A.A.1, Zabrodin A.V.2") > nonempty.index("СПИСОК ИСТОЧНИКОВ")
+    assert size(para(doc, "AN INTELLIGENT")) == 24
+    w = " | ".join(result.warnings)
+    assert "Авторы указаны списком" in w and "прописными" in w
+    assert "Не найдено: сведения об авторах" not in w and "Объём аннотации" in w
+    assert any("Английский блок перенесён" in k for k in result.done)
