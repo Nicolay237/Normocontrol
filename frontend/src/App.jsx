@@ -13,6 +13,7 @@ import LegalPage, { LEGAL_LINKS } from "./pages/LegalPage.jsx";
 import Verify from "./pages/Verify.jsx";
 import Forgot from "./pages/Forgot.jsx";
 import PayPage from "./pages/PayPage.jsx";
+import Article from "./pages/Article.jsx";
 import ThemeToggle from "./components/ThemeToggle.jsx";
 import { hit } from "./metrika.js";
 
@@ -25,6 +26,13 @@ function PageViews() {
     return () => clearTimeout(id);
   }, [pathname, search]);
   return null;
+}
+
+/** Вкладка «Статьи ПГУПС» — только тем, кому включено оформление статей (администратору тоже). */
+function ArticleTab() {
+  const { user } = useSession();
+  if (!user?.article_access) return null;
+  return <NavLink to="/article" className="tab label-large">Статьи ПГУПС<md-ripple /></NavLink>;
 }
 
 function UserButton() {
@@ -48,7 +56,7 @@ function UserButton() {
 }
 
 // страницы с почтой, платежами и паролями — Вебвизор Метрики их текст и ввод не записывает
-const PRIVATE_PAGES = /^\/(admin|account|pay|login|register|forgot|verify)(\/|$)/;
+const PRIVATE_PAGES = /^\/(admin|account|pay|login|register|forgot|verify|article)(\/|$)/;
 
 export default function App() {
   const { pathname } = useLocation();
@@ -65,6 +73,7 @@ export default function App() {
             <NavLink to="/vkr" className="tab label-large">ВКР<md-ripple /></NavLink>
             <NavLink to="/coursework" className="tab label-large">Курсовая<md-ripple /></NavLink>
             <NavLink to="/standards" className="tab label-large">ГОСТы<md-ripple /></NavLink>
+            <ArticleTab />
           </nav>
           <span className="gost label-medium">ГОСТ 7.32&#8209;2017</span>
           <ThemeToggle />
@@ -85,6 +94,7 @@ export default function App() {
           <Route path="/verify" element={<Verify />} />
           <Route path="/forgot" element={<Forgot />} />
           <Route path="/pay/:orderId" element={<PayPage />} />
+          <Route path="/article" element={<Article />} />
           <Route path="/account" element={<Account />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="*" element={<Home notFound />} />

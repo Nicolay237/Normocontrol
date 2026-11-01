@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
 import {
   adminBulk, adminCreate, adminDelete, adminOrderUpdate, adminOrders, adminPackSettings, adminPacks, adminReset,
-  adminUpdate, adminUsers,
+  adminUpdate, adminUsers, api,
 } from "../api.js";
 import { useSession } from "../ProfilesContext.jsx";
 import { Field, Icon, attr, submitOnEnter } from "../ui.jsx";
@@ -201,6 +201,7 @@ function Orders() {
 }
 
 function UserRow({ u, me, packs, onChanged, onCredentials }) {
+  const { setSession } = useSession();
   const [busy, setBusy] = useState(false);
   async function act(fn, confirmText) {
     if (confirmText && !window.confirm(confirmText)) return;
@@ -220,6 +221,7 @@ function UserRow({ u, me, packs, onChanged, onCredentials }) {
           {u.active && u.must_change_password && <span className="tag">ждёт первого входа</span>}
           {u.registered && <span className="tag">регистрация</span>}
           {u.free_autofix && u.role !== "admin" && <span className="tag tag-ok">бесплатно</span>}
+          {u.article_access && <span className="tag tag-ok">статьи ПГУПС</span>}
           {subActive && <span className="tag tag-ok">подписка до {fmtDate(u.subscription_until)}</span>}
         </span>
         <span className="label-medium muted">последний вход: {fmtDate(u.last_login_at)}</span>
@@ -239,6 +241,18 @@ function UserRow({ u, me, packs, onChanged, onCredentials }) {
             )}
           </span>
         )}
+        <span className="pack-toggles">
+          <button type="button" className={`pack-toggle label-medium${u.article_access ? " on" : ""}`}
+                  aria-pressed={u.article_access} disabled={busy}
+                  title={u.article_access ? "Закрыть «Статьи ПГУПС»" : "Открыть «Статьи ПГУПС» (оформление статей для кафедры)"}
+                  onClick={() => act(async () => {
+                    await adminUpdate(u.id, { article_access: !u.article_access });
+                    if (u.id === me.id) setSession(await api("/api/me"));   // своя вкладка — сразу, без перезагрузки
+                    onChanged();
+                  })}>
+            <Icon name={u.article_access ? "tick" : "plus"} size={16} /> Статьи ПГУПС
+          </button>
+        </span>
         {packs.length > 0 && (
           <span className="pack-toggles">
             {packs.map((p) => {

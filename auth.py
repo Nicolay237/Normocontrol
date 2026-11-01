@@ -68,6 +68,8 @@ users = Table(
     Column("email_verified", Boolean, nullable=False, default=True),
     # оплаченные и ещё не использованные разовые автоисправления
     Column("autofix_credits", Integer, nullable=False, default=0),
+    # оформление статей для журнала кафедры — открывает администратор, не продаётся
+    Column("article_access", Boolean, nullable=False, default=False),
 )
 
 # заказы: разовое исправление (autofix) или подписка (subscription), оплата через ЮKassa
@@ -139,6 +141,7 @@ _ADDED_COLUMNS = {
     "consent_at": "{timestamp} NULL",
     "email_verified": "BOOLEAN NOT NULL DEFAULT TRUE",
     "autofix_credits": "INTEGER NOT NULL DEFAULT 0",
+    "article_access": "BOOLEAN NOT NULL DEFAULT FALSE",
 }
 # то же для других таблиц: {таблица: {колонка: тип}}
 _ADDED_COLUMNS_OTHER = {
@@ -249,7 +252,7 @@ def public_user(u):
     return {"id": u["id"], "login": u["login"], "name": u["name"], "role": u["role"],
             "must_change_password": u["must_change_password"], "free_autofix": has_free_access(u),
             "subscription": subscription_state(u), "email_verified": bool(u["email_verified"]),
-            "autofix_credits": u["autofix_credits"],
+            "autofix_credits": u["autofix_credits"], "article_access": has_article_access(u),
             "packs": [{"key": k, "short": PACKS[k].short, "title": PACKS[k].title,
                        "profiles": list(PACKS[k].profiles)} for k in assigned_packs(u["id"])]}
 
@@ -275,6 +278,11 @@ def packs_for_check(u):
 
 def has_free_access(u):
     return bool(u and (u["role"] == "admin" or u["free_autofix"]))
+
+
+def has_article_access(u):
+    """Оформление статей ПГУПС — только тем, кому включено в админке (администратору тоже)."""
+    return bool(u and u["active"] and not u["must_change_password"] and u["article_access"])
 
 
 def _aware(dt):
@@ -560,6 +568,7 @@ def _admin_row(r, packs=None):
         "id": r["id"], "login": r["login"], "name": r["name"], "role": r["role"], "active": r["active"],
         "must_change_password": r["must_change_password"],
         "free_autofix": has_free_access(r), "registered": r["registered"],
+        "article_access": bool(r["article_access"]),
         "subscription_until": _aware(r["subscription_until"]).isoformat() if r["subscription_until"] else None,
         "created_at": r["created_at"].isoformat() if r["created_at"] else None,
         "last_login_at": r["last_login_at"].isoformat() if r["last_login_at"] else None,
@@ -662,6 +671,8 @@ def admin_update(uid):
         values["role"] = data["role"]
     if "free_autofix" in data:
         values["free_autofix"] = bool(data["free_autofix"])
+    if "article_access" in data:
+        values["article_access"] = bool(data["article_access"])
     if "subscription_days" in data:   # пока оплата не подключена — подписку выдаёт администратор
         days = data["subscription_days"]
         if not isinstance(days, int) or isinstance(days, bool) or not 1 <= days <= 366:

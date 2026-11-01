@@ -24,6 +24,7 @@ from checker import (
 from checker import standards
 from checker.fixers import fix_docx, estimate_fixable
 from checker.annotate import annotate_docx
+from checker.article import format_article
 import auth
 import legal
 import mailer
@@ -362,6 +363,34 @@ def api_fixed_download(rid):
     path, name = entry
     resp = send_file(path, mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
     return _attachment(resp, "fixed.docx", name)
+
+
+@app.route("/api/article/format", methods=["POST"])
+def api_article_format():
+    """Оформление статьи по правилам журнала — только для тех, кому открыл администратор."""
+    u = current_user()
+    if not u:
+        return jsonify(error="Нужно войти в аккаунт.", code="login_required"), 401
+    if not auth.has_article_access(u):
+        return jsonify(error="Оформление статей доступно по приглашению кафедры.", code="no_access"), 403
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return jsonify(error="Файл не выбран."), 400
+    if os.path.splitext(f.filename)[1].lower() != ".docx":
+        return jsonify(error="Загрузите статью в формате Word (.docx)."), 400
+    with tempfile.TemporaryDirectory() as tmp:
+        src, dst = os.path.join(tmp, "article.docx"), os.path.join(tmp, "formatted.docx")
+        f.save(src)
+        if _unpacked_size(src) > DOCX_MAX_UNPACKED:
+            return jsonify(error="Файл не похож на обычную статью Word: после распаковки он слишком большой."), 400
+        try:
+            result = format_article(src, dst)
+        except Exception:
+            app.logger.exception("article format failed")
+            return jsonify(error="Не удалось обработать файл. Убедитесь, что он не повреждён и не защищён паролем."), 422
+        base = os.path.splitext(f.filename)[0]
+        download_id = store.put("fixed", f"{base}_оформлено.docx", src_path=dst)
+    return jsonify(file=f.filename, download_id=download_id, **result.to_dict())
 
 
 @app.route("/api/annotated/<upload_id>")

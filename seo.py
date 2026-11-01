@@ -180,7 +180,7 @@ PAGES = {
 }
 
 # служебные страницы: доступны, но не индексируются
-NOINDEX = {"/login", "/register", "/verify", "/forgot", "/account", "/admin"}
+NOINDEX = {"/login", "/register", "/verify", "/forgot", "/account", "/admin", "/article"}
 NOINDEX_PREFIXES = ("/pay/",)   # страницы заказов
 
 

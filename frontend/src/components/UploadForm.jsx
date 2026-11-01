@@ -2,17 +2,19 @@ import { useState } from "react";
 import { Icon, attr } from "../ui.jsx";
 
 const OK_EXT = /\.(docx|pdf)$/i;
+const DOCX_EXT = /\.docx$/i;
 
-export default function UploadForm({ onSubmit, serverError }) {
+/** docxOnly — только Word (оформление статьи); submitLabel — надпись на кнопке. */
+export default function UploadForm({ onSubmit, serverError, docxOnly = false, submitLabel = "Проверить документ" }) {
   const [file, setFile] = useState(null);
   const [error, setError] = useState(null);
   const [drag, setDrag] = useState(false);
 
   function pick(f) {
     if (!f) return;
-    if (!OK_EXT.test(f.name)) {
+    if (!(docxOnly ? DOCX_EXT : OK_EXT).test(f.name)) {
       setFile(null);
-      setError("Поддерживаются только файлы .docx и .pdf.");
+      setError(docxOnly ? "Загрузите файл Word (.docx)." : "Поддерживаются только файлы .docx и .pdf.");
       return;
     }
     if (f.size > 20 * 1024 * 1024) {
@@ -55,11 +57,11 @@ export default function UploadForm({ onSubmit, serverError }) {
               или <span className="dz-link">выберите на компьютере</span>
             </span>
             <span className="dz-formats label-medium">
-              <span>DOCX</span><span>PDF</span><span>до 20&nbsp;МБ</span>
+              <span>DOCX</span>{!docxOnly && <span>PDF</span>}<span>до 20&nbsp;МБ</span>
             </span>
           </>
         )}
-        <input type="file" accept=".docx,.pdf" className="visually-hidden" onChange={(e) => pick(e.target.files[0])} />
+        <input type="file" accept={docxOnly ? ".docx" : ".docx,.pdf"} className="visually-hidden" onChange={(e) => pick(e.target.files[0])} />
       </label>
 
       {message && (
@@ -70,7 +72,7 @@ export default function UploadForm({ onSubmit, serverError }) {
 
       <md-filled-button type="submit" disabled={attr(!file)} class="submit">
         <Icon name="check" slot="icon" />
-        {file ? "Проверить документ" : "Выберите файл, чтобы начать проверку"}
+        {file ? submitLabel : "Выберите файл, чтобы начать"}
       </md-filled-button>
     </form>
   );

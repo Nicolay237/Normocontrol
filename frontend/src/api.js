@@ -126,6 +126,13 @@ async function fixFileOnce({ uploadId, file, profile, standards, onProgress }) {
   return postForm("/api/fix", data, onProgress);
 }
 
+/** Оформление статьи по правилам журнала (только с доступом от администратора). */
+export function formatArticle(file, onProgress) {
+  const data = new FormData();
+  data.append("file", file);
+  return postForm("/api/article/format", data, onProgress);
+}
+
 export const reportUrl = (id) => `/api/report/${id}`;
 export const annotatedUrl = (uploadId, profile, standards) =>
   `/api/annotated/${uploadId}?profile=${encodeURIComponent(profile)}` +

@@ -275,6 +275,10 @@ details[open] > summary .chevron { transform: rotate(180deg); }
 /* на телефоне в шапке остаются логотип-значок, вкладки и кнопка аккаунта */
 @media (max-width: 480px) {
   .brand-text { display: none; }
+  /* четвёртая вкладка («Статья») не влезает — вкладки прокручиваются, кнопки справа на месте */
+  .tabs { min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab { padding: 0 10px; }
 }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .chevron { transition: none; } }
 a:focus-visible, summary:focus-visible, .chip:focus-visible { outline: 2px solid var(--md-sys-color-primary); outline-offset: 2px; }
@@ -617,3 +621,11 @@ button.price-card:focus-visible { outline: 2px solid var(--md-sys-color-primary)
   .example-frame { padding: 12px 8px; }
   .example-cta .link-btn, .example-cta md-filled-button, .example-cta md-outlined-button { width: 100%; }
 }
+
+/* ── оформление статьи ── */
+.article-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+.article-list li { display: flex; gap: 12px; align-items: flex-start; }
+.article-list li > svg { flex-shrink: 0; margin-top: 2px; color: var(--md-sys-color-tertiary); }
+.article-warn li { padding: 12px var(--pad); border-radius: var(--shape-md); background: var(--md-sys-color-surface-container-low); }
+.article-warn li > svg { color: var(--md-sys-color-error); }
+.article-note { margin: 24px 0 0; }
