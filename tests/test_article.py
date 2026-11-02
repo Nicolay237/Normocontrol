@@ -284,3 +284,95 @@ def test_conference_style_article(tmp_path):
     assert "Авторы указаны списком" in w and "прописными" in w
     assert "Не найдено: сведения об авторах" not in w and "Объём аннотации" in w
     assert any("Английский блок перенесён" in k for k in result.done)
+
+
+# ── ошибки на статьях кафедры: источники теряются, ложные «несуществующие источники» ──
+
+def _math(p):
+    """Формула Word (OMML) внутри абзаца — как O(n + m) в тексте."""
+    from docx.oxml import parse_xml
+    p._p.append(parse_xml(
+        '<m:oMath xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math">'
+        '<m:r><m:t>O(n+m)</m:t></m:r></m:oMath>'))
+
+
+def refs_article(refs_heading="Библиографический список:"):
+    doc = Document()
+    add = doc.add_paragraph
+    add("УДК 004.4")
+    add("СИСТЕМА ОБНАРУЖЕНИЯ ПЛАГИАТА НА ОСНОВЕ АЛГОРИТМА").runs[0].bold = True
+    add("Аннотация. " + ABSTRACT[:900])
+    add("Ключевые слова: плагиат, хеш, алгоритм, код, токены, сравнение, нормализация.")
+    add("Введение").runs[0].bold = True
+    p = add("Алгоритм использует хеширование [1]. Средняя сложность ")
+    _math(p)
+    p.add_run(", что быстрее перебора [2].")
+    head = add("")
+    head.add_run("Архитектура системы").bold = True
+    head.add_run().add_break()
+    head.add_run("Система состоит из модулей [3], хранилище описано в [4].")
+    add("Методы сжатия без потерь.").runs[0].bold = True
+    add("Сравнение выполняется по окнам [5].")
+    add("Заключение").runs[0].bold = True
+    add("Система работает.")
+    add(refs_heading)
+    add("Бхаргава А. Грокаем алгоритмы. СПб.: Питер, 2022. 288 с.")
+    add("Строус Л. Алгоритмы с нуля. СПб.: Питер, 2024. 256 с.")
+    add("Banks A., Porcello E. Learning React: Modern Patterns for Developing React Apps. 3rd ed. O'Reilly, 2020. 310 p.")
+    add("Абдулазиз А. А. Создание веб-API Python с помощью FastAPI. М.: ДМК Пресс, 2023. 220 с.")
+    add("Obe R., Hsu L. PostgreSQL: Up and Running. Sebastopol: O'Reilly Media, 2017. 312 p.")
+    add("PLAGIARISM DETECTION SYSTEM BASED ON THE ALGORITHM")
+    add("Abstract. The article discusses plagiarism detection.")
+    return doc
+
+
+def _run_refs(tmp_path, **kw):
+    src, dst = tmp_path / "refs.docx", tmp_path / "refs_out.docx"
+    refs_article(**kw).save(src)
+    return format_article(str(src), str(dst)), Document(str(dst))
+
+
+def test_foreign_books_stay_in_reference_list(tmp_path):
+    result, doc = _run_refs(tmp_path)
+    w = " | ".join(result.warnings)
+    assert "Источников 5" in w                         # все пять, а не два до первой иностранной книги
+    assert "несуществующие" not in w and "нет ссылок" not in w
+    assert size(para(doc, "3. Banks A.")) == 12 and size(para(doc, "5. Obe R.")) == 12   # пронумерованы
+    assert size(para(doc, "PLAGIARISM DETECTION")) == 24        # английский блок — после списка
+
+
+def test_reference_heading_variants(tmp_path):
+    result, doc = _run_refs(tmp_path, refs_heading="ИСПОЛЬЗУЕМЫЕ ИСТОЧНИКИ")
+    assert para(doc, "СПИСОК ИСТОЧНИКОВ")
+    assert "Источников 5" in " | ".join(result.warnings)
+
+
+def test_paragraph_with_inline_formula_is_text(tmp_path):
+    """Формула внутри абзаца не делает его формулой: абзац оформлен, ссылка [1] учтена."""
+    result, doc = _run_refs(tmp_path)
+    p = para(doc, "Алгоритм использует")
+    assert size(p) == 14 and round(p.paragraph_format.first_line_indent.cm, 2) == 0.5
+    assert not any("[1]" in x for x in result.warnings)
+
+
+def test_heading_with_period_and_heading_with_line_break(tmp_path):
+    result, doc = _run_refs(tmp_path)
+    h = para(doc, "Методы сжатия без потерь")
+    assert h.text == "Методы сжатия без потерь" and h.runs[0].font.small_caps
+    arch = para(doc, "Архитектура системы")
+    assert arch.text == "Архитектура системы" and arch.runs[0].font.small_caps
+    body = para(doc, "Система состоит")
+    assert size(body) == 14 and not body.runs[0].bold
+    assert not any("Разделов" in x for x in result.warnings)
+
+
+def test_missing_introduction_is_reported(tmp_path):
+    doc = refs_article()
+    for p in doc.paragraphs:
+        if p.text == "Введение":
+            p.runs[0].text = "Постановка задачи"
+    src, dst = tmp_path / "a.docx", tmp_path / "b.docx"
+    doc.save(src)
+    result = format_article(str(src), str(dst))
+    assert any("Нет раздела «Введение»" in x for x in result.warnings)
+    assert not any("«Заключение»" in x for x in result.warnings)

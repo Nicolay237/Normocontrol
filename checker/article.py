@@ -18,6 +18,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 
 from docx import Document
+from docx.enum.style import WD_STYLE_TYPE
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
@@ -43,8 +44,10 @@ KEYWORDS_RU_RE = re.compile(r"^\s*Ключевые\s+слова\s*[:.]?", re.I)
 THANKS_RE = re.compile(r"^\s*Благодарност[ьи]\s*[.:]?", re.I)
 SPECIALTY_RE = re.compile(r"^\s*(\d\.\d\.\d{1,2}\.?)\s*[—–-]")
 AUTHOR_RU_RE = re.compile(r"^\s*[А-ЯЁ][а-яё-]+\s+(?:[А-ЯЁ][а-яё-]+\s+[А-ЯЁ][а-яё-]+|[А-ЯЁ]\.\s?[А-ЯЁ]\.)\s*[—–-]\s")
-REFS_HEAD_RE = re.compile(r"^\s*(список\s+(использованных\s+|используемых\s+)?(источников|литературы)|литература|"
+REFS_HEAD_RE = re.compile(r"^\s*(список\s+(использованн\w+\s+|используем\w+\s+)?(источников|литературы)|"
+                          r"(использованн\w+\s+|используем\w+\s+)?(источники|литература)|"
                           r"библиографический\s+список)\s*:?\s*$", re.I)
+YEAR_RE = re.compile(r"\b(1[89]|20)\d\d\b")
 DATES_RU_RE = re.compile(r"^\s*(Дата\s+поступления|Решение\s+о\s+публикации)\b", re.I)
 CITE_EN_RE = re.compile(r"^\s*For\s+citation\s*:", re.I)
 ABSTRACT_EN_RE = re.compile(r"^\s*Abstract\s*[.:]?", re.I)
@@ -211,6 +214,62 @@ def _split_paragraph(p, k):
     return new
 
 
+def _first_break(p):
+    """Первый перенос строки (Shift+Enter) в абзаце; разрыв страницы не в счёт."""
+    for br in p._p.iter(qn("w:br")):
+        if br.get(qn("w:type")) in (None, "textWrapping"):
+            return br
+    return None
+
+
+def _bold_before_break(p):
+    br = _first_break(p)
+    if br is None:
+        return False
+    runs = []
+    for r in get_all_runs(p):
+        if br in r._r.iter(qn("w:br")):
+            if r.text.split("\n")[0].strip():
+                runs.append(r)
+            break
+        if r.text.strip():
+            runs.append(r)
+    return bool(runs) and all(r.bold for r in runs)
+
+
+def _split_at_break(p):
+    """Всё после первого Shift+Enter — в новый абзац сразу после; возвращает его (или None)."""
+    br = _first_break(p)
+    if br is None:
+        return None
+    r_el = br.getparent()
+    if r_el.tag != qn("w:r"):
+        return None
+    kids = list(r_el)
+    i = kids.index(br)
+    tail_r = copy.deepcopy(r_el)
+    for k, child in enumerate(list(tail_r)):
+        if child.tag != qn("w:rPr") and k <= i:
+            tail_r.remove(child)
+    for child in kids[i:]:
+        r_el.remove(child)
+    new = _new_paragraph_after(p)
+    new._p.append(tail_r)
+    container = r_el.getparent()          # w:p или w:hyperlink
+    for sib in list(r_el.itersiblings()):
+        if sib.tag in (qn("w:r"), qn("w:hyperlink"), qn("w:ins"), qn("w:smartTag")):
+            new._p.append(sib)
+    if container.tag == qn("w:hyperlink"):
+        for sib in list(container.itersiblings()):
+            if sib.tag in (qn("w:r"), qn("w:hyperlink")):
+                new._p.append(sib)
+    for t in _t_nodes(new):
+        t.text = (t.text or "").lstrip()
+        if t.text:
+            break
+    return new
+
+
 def _t_nodes(p):
     return [t for t in p._p.iter(qn("w:t"))]
 
@@ -328,6 +387,7 @@ class ArticleFormatter:
         self.en_head = []            # английский блок в начале статьи — переносится в конец
         self.last_main = None        # последний абзац списка источников / дат — после него английский блок
         self.authors_list = False
+        self.headings = []           # тексты заголовков разделов (строчными, без точки)
 
     # -- страница и стили
     def page(self):
@@ -336,7 +396,7 @@ class ArticleFormatter:
             s.left_margin, s.right_margin = Cm(MARGINS_CM["left"]), Cm(MARGINS_CM["right"])
             s.top_margin, s.bottom_margin = Cm(MARGINS_CM["top"]), Cm(MARGINS_CM["bottom"])
             s.header_distance = s.footer_distance = Cm(1.27)
-        normal = self.doc.styles["Normal"]
+        normal = self.doc.styles.default(WD_STYLE_TYPE.PARAGRAPH) or self.doc.styles["Normal"]
         normal.font.name = "Times New Roman"
         normal.font.size = Pt(BODY_PT)
         rpr = normal.element.get_or_add_rPr()
@@ -391,11 +451,9 @@ class ArticleFormatter:
                 zone = "dates"
                 continue
             if zone in ("refs", "dates") and _latin_share(text) > 0.6 and not DATES_RU_RE.match(text):
-                if zone == "refs" and not (REFS_EN_RE.match(text) or CITE_EN_RE.match(text)) and \
-                        (re.match(r"^\s*\d", text) or "//" in text or "URL" in text):
-                    pass   # иноязычный источник в русском списке
-                else:
+                if zone == "dates" or self.english_starts(text):
                     zone = "en"
+                # иначе это иноязычный источник в русском списке — список продолжается
             if zone == "en_refs" and DATES_EN_RE.match(text):
                 self.plain(p, HEAD_PT, J)
                 continue
@@ -443,6 +501,19 @@ class ArticleFormatter:
         self.spacing()
         self.summary(head_seen)
         return self.res
+
+    @staticmethod
+    def english_starts(text):
+        """Начался ли английский блок после списка источников. Иностранная книга «Banks A. Learning
+        React. — O'Reilly, 2020» блоком не считается: в записи источника почти всегда есть год."""
+        if REFS_EN_RE.match(text) or CITE_EN_RE.match(text) or ABSTRACT_EN_RE.match(text) \
+                or KEYWORDS_EN_RE.match(text) or AUTHOR_EN_HINT.search(text):
+            return True
+        first = text.split("\n")[0]
+        if AUTHORS_LIST_EN_RE.match(first) or (_is_caps(text) and not YEAR_RE.search(text)):
+            return True
+        return not YEAR_RE.search(text) and "URL" not in text and "//" not in text \
+            and not re.match(r"^\s*\d", text) and len(text) < 200
 
     # -- порядок частей как в шаблоне: название сразу после УДК, английский блок — в конце
     def reorder(self):
@@ -569,7 +640,9 @@ class ArticleFormatter:
             _para(p, C, 0)
             self.found["image"] += 1
             return pending_table_title
-        if is_formula(p):
+        # формула отдельной строкой (вокруг — разве что номер «(1)» и запятая); формулы внутри
+        # текста абзаца не делают его формулой — он оформляется и проверяется как обычный
+        if is_formula(p) and len(re.sub(r"\(\d+(\.\d+)?\)|[\s,.;]", "", text)) <= 3:
             _runs(p, BODY_PT)
             self.found["formula"] += 1
             return pending_table_title
@@ -608,8 +681,19 @@ class ArticleFormatter:
             for r in get_all_runs(p):
                 r.font.small_caps = True
             self.found["heading"] += 1
+            self.headings.append(m_run.group(1).lower())
             self.res.done["Заголовок «Введение» / «Заключение» вынесен отдельной строкой"] += 1
             return self.body(rest, _text(rest), False)
+
+        # «Постобработка и визуализация⏎Финальный этап…» — заголовок и текст в одном абзаце через Shift+Enter
+        first = p.text.split("\n")[0].strip()
+        if "\n" in p.text and first and len(first) <= 150 and not first.endswith((":", ";", ",")) \
+                and _bold_before_break(p):
+            rest = _split_at_break(p)
+            if rest is not None:
+                self.body(p, _text(p), False)
+                self.res.done["Заголовок и текст, набранные в одном абзаце, разделены"] += 1
+                return self.body(rest, _text(rest), False)
 
         if self.is_heading(p, text):
             self.gaps += _gap_before(p)
@@ -618,6 +702,7 @@ class ArticleFormatter:
             for r in get_all_runs(p):
                 r.font.small_caps = True
             self.found["heading"] += 1
+            self.headings.append(_text(p).lower())
             return False
 
         _typography(p, self.typo)
@@ -639,6 +724,9 @@ class ArticleFormatter:
         if _is_heading_style(p):
             return True
         if SUBSECTION_RE.match(text) and len(text.split()) <= 15 and not text.endswith((".", ";", ":", ",")):
+            return True
+        # «Методы сжатия без потерь.» — короткий полужирный заголовок с лишней точкой в конце
+        if text.endswith(".") and ". " not in text and len(text.split()) <= 10 and _all_bold(p):
             return True
         if text.endswith((".", ":", ";", ",")) and not re.match(r"^\d+(\.\d+)*\.\s", text):
             return False
@@ -794,9 +882,14 @@ class ArticleFormatter:
             kw = [k for k in re.split(r"[;,]", self.keywords_ru) if k.strip()]
             if not 7 <= len(kw) <= 10:
                 w.append(f"Ключевых слов {len(kw)} — нужно 7–10.")
-        headings = f["heading"]
-        if headings and headings - 2 < 2:
+        sections = [h for h in self.headings if h not in SECTION_WORDS]
+        if self.headings and len(sections) < 2:
             w.append("Разделов (кроме введения и заключения) меньше двух — так требует редакция.")
+        if self.headings:
+            for word, label in (("введение", "Введение"), ("заключение", "Заключение")):
+                if word not in self.headings:
+                    w.append(f"Нет раздела «{label}» — по шаблону статья начинается введением "
+                             "и заканчивается заключением.")
         if not f["heading"]:
             w.append("Не найдены заголовки разделов: сделайте их отдельными строками полужирным "
                      "или стилем «Заголовок».")
