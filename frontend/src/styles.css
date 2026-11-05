@@ -498,7 +498,13 @@ button.summary-icon:focus-visible { outline: 2px solid var(--md-sys-color-primar
 .my-orders h2 { margin: 0; }
 .my-orders ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .my-orders li { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-@media (max-width: 720px) { .receipt-form { max-width: none; justify-content: flex-start; } .receipt-form .check, .receipt-error { justify-content: flex-start; text-align: left; } }
+@media (max-width: 720px) {
+  .receipt-form { max-width: none; justify-content: flex-start; }
+  .receipt-form .check, .receipt-error { justify-content: flex-start; text-align: left; }
+  /* на узком экране поле для чека уходит под описание оплаты, иначе оно сжимает текст в столбик */
+  .order-row { flex-wrap: wrap; }
+  .order-row .user-main, .order-row .receipt-form { flex: 1 1 100%; }
+}
 .account-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
 .account-head .hero-title { margin-bottom: 4px; }
 .account-head .supporting { margin-bottom: 0; }

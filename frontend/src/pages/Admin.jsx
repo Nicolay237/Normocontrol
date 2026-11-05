@@ -185,7 +185,7 @@ function Orders() {
       ) : (
         <ul className="user-list">
           {orders.map((o) => (
-            <li key={o.id} className="user-row">
+            <li key={o.id} className="user-row order-row">
               <div className="user-main">
                 <span className="title-medium">
                   {o.amount}&nbsp;₽ · {o.kind === "subscription" ? "подписка на 30 дней" : "автоисправление"}
