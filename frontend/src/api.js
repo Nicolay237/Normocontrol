@@ -55,6 +55,14 @@ export const adminPacks = () => api("/api/admin/packs");
 export const adminPackSettings = (key, settings) =>
   api(`/api/admin/packs/${key}`, { method: "PUT", body: { settings } });
 export const adminDelete = (id) => api(`/api/admin/users/${id}`, { method: "DELETE" });
+export const adminReviews = () => api("/api/admin/reviews");
+export const adminReviewStatus = (id, status) => api(`/api/admin/reviews/${id}`, { method: "PATCH", body: { status } });
+export const adminReviewDelete = (id) => api(`/api/admin/reviews/${id}`, { method: "DELETE" });
+
+// ── отзывы ──
+export const fetchReviews = () => api("/api/reviews");
+export const sendReview = (data) => api("/api/reviews", { method: "POST", body: data })
+  .then((res) => { goal("review", { rating: data.rating, from: data.source || "page" }); return res; });
 
 /**
  * POST multipart-формы через XHR — в отличие от fetch, он сообщает прогресс отправки.

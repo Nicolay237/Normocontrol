@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { annotatedUrl, reportUrl } from "../api.js";
 import { Icon } from "../ui.jsx";
 import Celebration from "./Celebration.jsx";
+import ReviewButton from "./ReviewButton.jsx";
 
 const PAGE = 30;
 const COLLAPSE_OVER = 20; // при большом числе замечаний разделы свёрнуты, обзор — в чипах
@@ -124,6 +125,7 @@ export default function ReportView({ report, children }) {
               Скачать отчёт
             </md-outlined-button>
           )}
+          <ReviewButton from="check" />
         </div>
       </div>
 

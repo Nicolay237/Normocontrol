@@ -124,6 +124,23 @@ def _legal_text(s):
     return "".join(out)
 
 
+def _reviews_body():
+    parts = ["<h1>Отзывы о сервисе «Нормоконтроль»</h1>",
+             "<p>Что говорят студенты, которые проверяли и исправляли оформление ВКР и курсовых по ГОСТ "
+             "7.32-2017. Оставить свой отзыв можно на этой странице.</p>"]
+    try:
+        import reviews
+        data = reviews.published(limit=50)
+    except Exception:       # база недоступна — страница всё равно отдаётся
+        data = {"items": [], "count": 0, "average": None}
+    if data["count"]:
+        parts.append(f"<p>Средняя оценка: {data['average']} из 5 ({data['count']} отз.)</p>")
+    for r in data["items"]:
+        parts.append(f"<h3>{e(r['name'])} — {r['rating']} из 5</h3><p>{e(r['text'])}</p>")
+    parts.append('<p><a href="/vkr">Проверить ВКР</a> · <a href="/coursework">Проверить курсовую</a></p>')
+    return "".join(parts)
+
+
 def _legal_page(key, path, title, description):
     import legal
 
@@ -165,6 +182,10 @@ PAGES = {
                                   "ГОСТ Р 7.0.11-2011 (диссертации), список литературы по ГОСТ Р 7.0.100-2018 или "
                                   "ГОСТ 7.1-2003, ссылки по ГОСТ Р 7.0.5-2008.",
                    "body": _standards_body},
+    "/reviews": {"path": "/reviews", "title": "Отзывы о проверке оформления ВКР и курсовых — Нормоконтроль",
+                 "description": "Отзывы студентов о сервисе «Нормоконтроль»: проверка и автоисправление "
+                                "оформления ВКР и курсовых работ по ГОСТ 7.32-2017.",
+                 "body": _reviews_body},
     "/offer": _legal_page("offer", "/offer", "Публичная оферта",
                           "Публичная оферта сервиса «Нормоконтроль»: услуги, цены, порядок оплаты и оказания услуг."),
     "/refund": _legal_page("refund", "/refund", "Правила возврата денежных средств",
@@ -259,7 +280,7 @@ def robots_txt(base):
 
 def sitemap_xml(base, lastmod=None):
     lastmod = lastmod or date.today().isoformat()
-    prio = {"/": "1.0", "/vkr": "0.9", "/coursework": "0.9", "/standards": "0.8", "/gost": "0.8"}
+    prio = {"/": "1.0", "/vkr": "0.9", "/coursework": "0.9", "/standards": "0.8", "/gost": "0.8", "/reviews": "0.6"}
     urls = "".join(
         f"<url><loc>{e(base + (p if p != '/' else '/'))}</loc><lastmod>{lastmod}</lastmod>"
         f"<priority>{prio.get(p, '0.5')}</priority></url>"

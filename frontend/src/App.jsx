@@ -14,6 +14,7 @@ import Verify from "./pages/Verify.jsx";
 import Forgot from "./pages/Forgot.jsx";
 import PayPage from "./pages/PayPage.jsx";
 import Article from "./pages/Article.jsx";
+import Reviews from "./pages/Reviews.jsx";
 import ThemeToggle from "./components/ThemeToggle.jsx";
 import { hit } from "./metrika.js";
 
@@ -95,6 +96,7 @@ export default function App() {
           <Route path="/forgot" element={<Forgot />} />
           <Route path="/pay/:orderId" element={<PayPage />} />
           <Route path="/article" element={<Article />} />
+          <Route path="/reviews" element={<Reviews />} />
           <Route path="/account" element={<Account />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="*" element={<Home notFound />} />
@@ -108,6 +110,7 @@ export default function App() {
             <Link to="/coursework">Проверка курсовой</Link>
             <Link to="/standards">Проверка по выбранным ГОСТам</Link>
             <Link to="/gost">Требования ГОСТ 7.32-2017</Link>
+            <Link to="/reviews">Отзывы</Link>
           </nav>
           <nav className="footer-links footer-legal label-medium" aria-label="Документы">
             {LEGAL_LINKS.map(([to, title]) => <Link key={to} to={to}>{title}</Link>)}

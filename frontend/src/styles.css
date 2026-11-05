@@ -629,3 +629,29 @@ button.price-card:focus-visible { outline: 2px solid var(--md-sys-color-primary)
 .article-warn li { padding: 12px var(--pad); border-radius: var(--shape-md); background: var(--md-sys-color-surface-container-low); }
 .article-warn li > svg { color: var(--md-sys-color-error); }
 .article-note { margin: 24px 0 0; }
+
+/* ── отзывы ── */
+.stars { display: inline-flex; align-items: center; gap: 2px; vertical-align: -3px; color: var(--md-sys-color-outline-variant); }
+.stars .on, .stars button.on { color: #f5a524; }
+.stars .on { fill: currentColor; }
+.stars-input button {
+  display: inline-grid; place-items: center; padding: 4px; border: none; background: none; border-radius: 50%;
+  color: var(--md-sys-color-outline); cursor: pointer;
+}
+.stars-input button.on svg { fill: currentColor; }
+.stars-input button:focus-visible { outline: 2px solid var(--md-sys-color-primary); }
+.stars-word { margin-left: 8px; color: var(--md-sys-color-on-surface-variant); min-width: 8ch; }
+.reviews-summary { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; }
+.review-form { max-width: 640px; margin-bottom: 40px; }
+.review-form textarea { resize: vertical; min-height: 120px; }
+.review-form a { color: var(--md-sys-color-primary); }
+.hp { position: absolute; left: -10000px; width: 1px; height: 1px; opacity: 0; }
+.reviews-page > .banner { max-width: 640px; margin-bottom: 40px; }
+.review-list { display: flex; flex-direction: column; gap: 12px; max-width: 760px; }
+.review {
+  display: flex; flex-direction: column; gap: 8px; padding: 16px var(--pad); border-radius: var(--shape-lg);
+  background: var(--md-sys-color-surface-container-low); border: 1px solid var(--md-sys-color-outline-variant);
+}
+.review-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.review-text { white-space: pre-line; overflow-wrap: anywhere; }
+.reviews-empty { margin-top: 8px; }

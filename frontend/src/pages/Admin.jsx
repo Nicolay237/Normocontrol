@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
 import {
   adminBulk, adminCreate, adminDelete, adminOrderUpdate, adminOrders, adminPackSettings, adminPacks, adminReset,
-  adminUpdate, adminUsers, api,
+  adminReviewDelete, adminReviewStatus, adminReviews, adminUpdate, adminUsers, api,
 } from "../api.js";
+import { Stars } from "./Reviews.jsx";
 import { useSession } from "../ProfilesContext.jsx";
 import { Field, Icon, attr, submitOnEnter } from "../ui.jsx";
 
@@ -307,6 +308,81 @@ function UserRow({ u, me, packs, onChanged, onCredentials }) {
   );
 }
 
+const REVIEW_STATUS = { pending: ["ждёт проверки", ""], published: ["опубликован", " tag-ok"], hidden: ["скрыт", " tag-error"] };
+const REVIEW_FROM = { check: "после проверки", fix: "после исправления" };
+
+/** Отзывы: новые ждут проверки, на /reviews видны только опубликованные. */
+function ReviewsAdmin() {
+  const [items, setItems] = useState(null);
+  const [busy, setBusy] = useState(null);
+  const load = () => adminReviews().then((r) => setItems(r.reviews)).catch(() => setItems([]));
+  useEffect(() => { load(); }, []);
+  useEffect(() => {   // переход по ссылке из письма о новом отзыве — когда списки выше уже догрузились
+    if (!items || window.location.hash !== "#reviews") return;
+    const id = setTimeout(() => document.getElementById("reviews")?.scrollIntoView(), 600);
+    return () => clearTimeout(id);
+  }, [items]);
+  if (!items) return null;
+
+  async function act(id, fn, confirmText) {
+    if (confirmText && !window.confirm(confirmText)) return;
+    setBusy(id);
+    try { await fn(); await load(); } catch (e) { window.alert(e.message); } finally { setBusy(null); }
+  }
+  const pending = items.filter((r) => r.status === "pending").length;
+  return (
+    <>
+      <div className="list-head" id="reviews">
+        <h2 className="title-large">Отзывы {items.length > 0 && <span className="muted">({items.length})</span>}</h2>
+      </div>
+      <p className="body-medium muted supporting">
+        Новые отзывы видны на странице <a href="/reviews">«Отзывы»</a> только после публикации.
+        {pending > 0 && <> <b>Ждут проверки: {pending}.</b></>}
+      </p>
+      {items.length === 0 ? (
+        <p className="body-medium muted">Отзывов пока нет.</p>
+      ) : (
+        <ul className="user-list">
+          {items.map((r) => (
+            <li key={r.id} className={`user-row${r.status === "hidden" ? " inactive" : ""}`}>
+              <div className="user-main">
+                <span className="title-medium">
+                  <Stars value={r.rating} size={16} /> {r.name || "Аноним"}
+                </span>
+                <span className="body-medium review-text">{r.text}</span>
+                <span className="body-medium muted">
+                  {fmtDateTime(r.created_at)}
+                  {REVIEW_FROM[r.source] && <span className="tag">{REVIEW_FROM[r.source]}</span>}
+                  <span className={`tag${REVIEW_STATUS[r.status][1]}`}>{REVIEW_STATUS[r.status][0]}</span>
+                </span>
+              </div>
+              <div className="user-actions">
+                {r.status !== "published" && (
+                  <button className="icon-btn" title="Опубликовать" aria-label={`Опубликовать отзыв ${r.id}`}
+                          disabled={busy === r.id} onClick={() => act(r.id, () => adminReviewStatus(r.id, "published"))}>
+                    <Icon name="eye" size={20} />
+                  </button>
+                )}
+                {r.status !== "hidden" && (
+                  <button className="icon-btn" title="Скрыть" aria-label={`Скрыть отзыв ${r.id}`}
+                          disabled={busy === r.id} onClick={() => act(r.id, () => adminReviewStatus(r.id, "hidden"))}>
+                    <Icon name="eyeOff" size={20} />
+                  </button>
+                )}
+                <button className="icon-btn danger" title="Удалить" aria-label={`Удалить отзыв ${r.id}`}
+                        disabled={busy === r.id}
+                        onClick={() => act(r.id, () => adminReviewDelete(r.id), "Удалить отзыв? Это нельзя отменить.")}>
+                  <Icon name="trash" size={20} />
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
+  );
+}
+
 export default function Admin() {
   const { user } = useSession();
   const [list, setList] = useState({ users: null, ephemeral: false, error: null });
@@ -457,6 +533,8 @@ export default function Admin() {
       )}
 
       <Orders />
+
+      <ReviewsAdmin />
 
       {packs.length > 0 && (
         <>

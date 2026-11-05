@@ -7,6 +7,7 @@ import { IssueList, plural } from "./ReportView.jsx";
 import Progress from "./Progress.jsx";
 import Offer from "./Offer.jsx";
 import Celebration from "./Celebration.jsx";
+import ReviewButton from "./ReviewButton.jsx";
 
 /** Карточка: иконка слева, весь контент — в одной колонке справа от неё. */
 function Card({ icon, done, children }) {
@@ -123,10 +124,13 @@ export default function AutoFix({ file, uploadId, profileKey, standards, total =
             : `Осталось ${r.issues_after} — их нужно поправить вручную. Исходный файл не изменён.`}
         </p>
 
-        <md-filled-button href={fixedUrl(r.download_id)} download="">
-          <Icon name="download" slot="icon" />
-          Скачать исправленный файл
-        </md-filled-button>
+        <div className="row-actions">
+          <md-filled-button href={fixedUrl(r.download_id)} download="">
+            <Icon name="download" slot="icon" />
+            Скачать исправленный файл
+          </md-filled-button>
+          <ReviewButton from="fix" />
+        </div>
 
         {fixedCats.length > 0 && (
           <details className="fix-details">

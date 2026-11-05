@@ -28,6 +28,7 @@ from checker.article import format_article
 import auth
 import legal
 import mailer
+import reviews
 import seo
 from auth import can_autofix, current_user, public_user, packs_for_check
 from checker.packs import PACKS
@@ -55,6 +56,7 @@ DOCX_MAX_UNPACKED = 200 * 1024 * 1024
 # Проверка доступна всем; автоисправление — вошедшим пользователям университета
 # (для остальных позже появится оплата).
 auth.init_app(app, BASE_DIR)
+app.register_blueprint(reviews.bp)
 
 # сбои проверки, оплаты и необработанные ошибки — письмом владельцу сайта
 mailer.install_alerts(app.logger, logging.getLogger("normocontrol"))
