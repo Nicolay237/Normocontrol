@@ -83,3 +83,24 @@ def test_alerts_off_without_mail(monkeypatch):
     monkeypatch.setenv("CONTACT_EMAIL", "owner@example.com")
     monkeypatch.delenv("SMTP_HOST", raising=False)
     assert mailer.install_alerts(logging.getLogger("x")) is None
+
+
+def test_dockerfile_copies_every_server_module():
+    """Новый модуль, не попавший в COPY Dockerfile, роняет контейнер при запуске (502 на сайте)."""
+    import re
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    copied = set()
+    for line in open(os.path.join(root, "Dockerfile"), encoding="utf-8"):
+        if line.startswith("COPY ") and "--from" not in line:
+            copied.update(line.split()[1:-1])
+    local = {f[:-3] for f in os.listdir(root) if f.endswith(".py")}
+    todo, seen = ["app"], set()
+    while todo:
+        mod = todo.pop()
+        if mod in seen:
+            continue
+        seen.add(mod)
+        src = open(os.path.join(root, mod + ".py"), encoding="utf-8").read()
+        todo += [m for m in re.findall(r"^\s*(?:import|from)\s+(\w+)", src, re.M) if m in local]
+    assert {m + ".py" for m in seen} <= copied, "добавьте в COPY Dockerfile: " + ", ".join(
+        sorted(m + ".py" for m in seen if m + ".py" not in copied))
