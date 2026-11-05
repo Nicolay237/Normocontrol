@@ -177,6 +177,9 @@ main { min-height: calc(100vh - 64px - 120px); }
 .summary-file { overflow-wrap: anywhere; }
 .summary-meta { color: var(--md-sys-color-on-surface-variant); }
 .summary-actions { flex-shrink: 0; display: flex; flex-direction: column; align-items: stretch; gap: 4px; }
+/* «Оставить отзыв» — ссылка-обёртка вокруг кнопки: растягиваем, как соседние кнопки */
+.summary-actions .link-btn { display: flex; }
+.summary-actions .link-btn md-text-button { flex: 1; }
 
 .overview { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 .chip {
@@ -271,6 +274,9 @@ details[open] > summary .chevron { transform: rotate(180deg); }
   .autofix-head { flex-direction: column; gap: 12px; }
   .summary-actions { margin-left: 0; width: 100%; flex-direction: column; }
   .autofix md-filled-button { width: 100%; }
+  .autofix .row-actions { flex-direction: column; }
+  .autofix .row-actions .link-btn { display: flex; }
+  .autofix .row-actions .link-btn md-text-button { flex: 1; }
 }
 /* на телефоне в шапке остаются логотип-значок, вкладки и кнопка аккаунта */
 @media (max-width: 480px) {
