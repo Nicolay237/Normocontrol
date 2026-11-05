@@ -72,3 +72,9 @@ def test_review_admin_only():
 
 def test_reviews_in_sitemap():
     assert "/reviews" in server.app.test_client().get("/sitemap.xml").get_data(as_text=True)
+
+
+def test_review_with_emoji_kept_as_is():
+    text = "Всё нашёл и исправил 😍🔥 спасибо 🙏"
+    assert post(client(), {**GOOD, "text": text}, ip="10.9.0.4").status_code == 201
+    assert admin_find(text)["text"] == text

@@ -7,6 +7,40 @@ import { Field, Icon, attr } from "../ui.jsx";
 const fmtDate = (iso) => new Date(iso).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
 const RATING_WORDS = ["", "Плохо", "Так себе", "Нормально", "Хорошо", "Отлично"];
 const SOURCES = { check: "проверки", fix: "исправления" };
+const EMOJI = [
+  "😀", "😊", "😍", "🤩", "😎", "🥳", "😅", "😂", "🙂", "😉", "🤔", "😐",
+  "😕", "😢", "😭", "😡", "😱", "🤯", "😌", "😴", "👍", "👎", "👌", "👏",
+  "🙏", "💪", "🔥", "✨", "⭐", "❤️", "💯", "✅", "❌", "📄", "🎓", "📚",
+];
+
+/** Кнопка со смайликами: выбранный вставляется в место курсора. */
+function EmojiPicker({ onPick }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e) => { if (e.type === "keydown" ? e.key === "Escape" : !ref.current?.contains(e.target)) setOpen(false); };
+    document.addEventListener("pointerdown", close);
+    document.addEventListener("keydown", close);
+    return () => { document.removeEventListener("pointerdown", close); document.removeEventListener("keydown", close); };
+  }, [open]);
+  return (
+    <span className="emoji" ref={ref}>
+      <button type="button" className="icon-btn" title="Смайлики" aria-label="Смайлики" aria-expanded={open}
+              onClick={() => setOpen(!open)}>
+        <Icon name="smile" size={22} />
+      </button>
+      {open && (
+        <span className="emoji-pop" role="listbox" aria-label="Смайлики">
+          {EMOJI.map((em) => (
+            <button key={em} type="button" role="option" aria-selected="false"
+                    onMouseDown={(e) => e.preventDefault()} onClick={() => onPick(em)}>{em}</button>
+          ))}
+        </span>
+      )}
+    </span>
+  );
+}
 
 /** Звёзды оценки: только показ или выбор (onChange). */
 export function Stars({ value, onChange, size = 20 }) {
@@ -36,6 +70,17 @@ function ReviewForm({ source, onSent }) {
   const [form, setForm] = useState({ rating: 0, name: "", text: "", website: "" });
   const [state, setState] = useState({ busy: false, error: null });
   const ref = useRef(null);
+  const textRef = useRef(null);
+
+  /** Смайлик — туда, где стоит курсор (или в конец), курсор — сразу после него. */
+  function insertEmoji(em) {
+    const ta = textRef.current;
+    const start = ta?.selectionStart ?? form.text.length, end = ta?.selectionEnd ?? form.text.length;
+    const text = form.text.slice(0, start) + em + form.text.slice(end);
+    if (text.length > 2000) return;
+    setForm({ ...form, text });
+    requestAnimationFrame(() => { ta?.focus(); ta?.setSelectionRange(start + em.length, start + em.length); });
+  }
 
   useEffect(() => { if (user?.name && !form.name) setForm((f) => ({ ...f, name: user.name.split(" ")[0] })); }, [user]);
   // пришли по кнопке после проверки или исправления — сразу к форме
@@ -62,9 +107,12 @@ function ReviewForm({ source, onSent }) {
       <Stars value={form.rating} onChange={(rating) => setForm({ ...form, rating })} size={32} />
       <label className="field">
         <span className="field-label label-large">Отзыв</span>
-        <textarea className="field-input body-large" rows={5} maxLength={2000} required value={form.text}
+        <span className="review-input">
+        <textarea ref={textRef} className="field-input body-large" rows={5} maxLength={2000} required value={form.text}
                   placeholder="Что понравилось, что нашёл сервис, чего не хватило"
                   onChange={(e) => setForm({ ...form, text: e.target.value })} />
+        <EmojiPicker onPick={insertEmoji} />
+        </span>
         <span className="field-hint body-medium">{len > 0 && len < 10 ? `Ещё хотя бы ${10 - len} симв.` : " "}</span>
       </label>
       <Field label="Имя (необязательно)" value={form.name} maxLength={80} autoComplete="given-name"
