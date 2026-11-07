@@ -653,9 +653,10 @@ button.price-card:focus-visible { outline: 2px solid var(--md-sys-color-primary)
 .stars-input button.on svg { fill: currentColor; }
 .stars-input button:focus-visible { outline: 2px solid var(--md-sys-color-primary); }
 .stars-word { margin-left: 8px; color: var(--md-sys-color-on-surface-variant); min-width: 8ch; }
-.reviews-summary { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; }
+.reviews-summary { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+.reviews-summary .stars { vertical-align: 0; }
 /* шапка, форма и отзывы — одной колонкой одинаковой ширины */
-.reviews-page > * { max-width: 760px; }
+.container.reviews-page { max-width: calc(760px + 2 * var(--gutter)); }
 .review-form { margin-bottom: 40px; }
 .review-form textarea { resize: vertical; min-height: 120px; }
 .review-form a { color: var(--md-sys-color-primary); }

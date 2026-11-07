@@ -159,10 +159,8 @@ export default function Reviews() {
       {data?.count > 0 && (
         <div className="reviews-summary">
           <span className="display-small">{String(data.average).replace(".", ",")}</span>
-          <div>
-            <Stars value={data.average} size={24} />
-            <div className="body-medium muted">{data.count} {plural(data.count)}</div>
-          </div>
+          <Stars value={data.average} size={24} />
+          <span className="body-medium muted">{data.count} {plural(data.count)}</span>
         </div>
       )}
 
