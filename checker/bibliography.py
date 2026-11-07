@@ -72,6 +72,8 @@ def _parse_cite(inner):
             nums.update(range(int(m.group(1)), int(m.group(2)) + 1))
             ok = True
         elif re.fullmatch(r"\d{1,3}", tok):
+            if int(tok) == 0:
+                return None     # «[0; 1]», «[0, 1]» — числовой интервал, а не ссылка
             nums.add(int(tok))
             ok = True
         elif re.fullmatch(r"(?:[сcСC]|p|pp|л|т|стр)\.\s*[\d–—-]+.*", tok, re.I):

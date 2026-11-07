@@ -45,7 +45,7 @@ def check_typography(labeled, report):
         m = None if role == "bib" else (SPACE_BEFORE_SIMPLE.search(text) or SPACE_BEFORE_DOT.search(text))
         if m:
             report.add(loc, "Пробелы", f"лишний пробел перед знаком препинания «{m.group(1)}»")
-        if role in ("body", "list") and HYPHEN_AS_DASH.search(text) and not CODE_LIKE.search(text):
+        if role in ("body", "list", "glossary") and HYPHEN_AS_DASH.search(text) and not CODE_LIKE.search(text):
             report.add(loc, "Пробелы", "между словами вместо дефиса с пробелами ставится тире: «слово – слово»")
         if role not in ("heading", "structural") and (text.startswith(" ") or text.startswith("\t")):
             report.add(loc, "Пробелы", "текст начинается с пробела/табуляции вместо красной строки")

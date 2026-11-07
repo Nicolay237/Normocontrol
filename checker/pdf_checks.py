@@ -37,6 +37,26 @@ def _cluster_lines(words, y_tol=2.5):
     return lines
 
 
+def _join_words(words):
+    """
+    Текст строки из слов pdfplumber. Пробел ставим только там, где между словами есть зазор:
+    при смене шрифта («string» моноширинным, а точка после него — Times) pdfplumber режет слово
+    на два, и простое склеивание через пробел давало ложный «пробел перед знаком препинания».
+    """
+    out = ""
+    for prev, w in zip([None] + words[:-1], words):
+        if prev is not None and w["x0"] - prev["x1"] > 0.08 * (w.get("size") or 12):
+            out += " "
+        out += w["text"]
+    return out
+
+
+# строка формулы: математический курсив (𝑃, 𝑡), знаки операций или «=»
+FORMULA_LINE_RE = re.compile("[\U0001D400-\U0001D7FF∑∏√×−≤≥≈]|" r"\S\s?=\s?\S")
+# заполнитель в строке содержания: «Введение ....... 3», «1.1 Обзор . . . . 14»
+TOC_LEADER_RE = re.compile(r"\s*(?:\.\s*){3,}\d{1,3}\s*$")
+
+
 def _pages_label(pages, limit=6):
     pages = sorted(set(pages))
     shown = ", ".join(str(p) for p in pages[:limit])
@@ -132,7 +152,7 @@ def check_pdf(path, report, n):
                 lines.append({
                     "x0": min(w["x0"] for w in lw), "x1": max(w["x1"] for w in lw),
                     "top": min(w["top"] for w in lw), "bottom": max(w["bottom"] for w in lw),
-                    "text": " ".join(w["text"] for w in lw),
+                    "text": _join_words(lw),
                     "size": round(statistics.median(sizes), 1) if sizes else None,
                     "words": lw,
                     # строка листинга (моноширинный шрифт) — в измерениях основного текста не участвует
@@ -325,5 +345,10 @@ def check_pdf(path, report, n):
                 key = _heading_key(l["text"])
                 if key in STRUCTURAL_HEADINGS or key.startswith("ПРИЛОЖЕНИЕ"):
                     in_bib = key.startswith(BIB_HEADINGS)
-                page_texts.append((f"Страница {p}, строка «{l['text'][:50]}»", l["text"], "bib" if in_bib else None))
+                # строка содержания: точки-заполнитель и номер страницы — не текст, пробелы в них не проверяем
+                text = TOC_LEADER_RE.sub("", l["text"])
+                # формула: нижние индексы pdfplumber выносит в отдельную строку, и на их месте
+                # остаётся зазор — «С = 𝑃 × 𝑇 , (1)»; пробелы в формулах не проверяем
+                role = "formula" if FORMULA_LINE_RE.search(text) else "bib" if in_bib else None
+                page_texts.append((f"Страница {p}, строка «{l['text'][:50]}»", text, role))
     check_typography(page_texts, report)

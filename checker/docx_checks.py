@@ -8,7 +8,8 @@ from docx.text.paragraph import Paragraph
 
 from .docx_utils import (
     Resolver, iter_blocks, get_all_runs, run_in_hyperlink, has_image,
-    is_formula, has_page_break, starts_with_page_break, preview, style_name, emu_to_cm, build_page_map,
+    is_formula, has_page_break, starts_with_page_break, starts_with_formula, preview, style_name, emu_to_cm,
+    build_page_map,
 )
 from .norms import STRUCTURAL_HEADINGS
 from .typography import check_typography
@@ -66,6 +67,8 @@ OTHER_CONT_RE = re.compile(r"^\s*(?:Продолжение|Окончание)\s
 FORMULA_TEXT_RE = re.compile(r"(?:\t|\s{2,})\(\d+(?:\.\d+)?\)\s*$")
 # перечень сокращений и термины пишут столбцом «НДС — налог на добавленную стоимость» (п. 5.5, 5.6)
 GLOSSARY_HEADINGS = ("СОКРАЩЕНИ", "ОБОЗНАЧЕНИ", "ТЕРМИНЫ И ОПРЕДЕЛЕНИЯ")
+# названия перечня в свободной форме: «ПЕРЕЧЕНЬ СОКРАЩЕНИЙ, ОБОЗНАЧЕНИЙ И ТЕРМИНОВ»
+GLOSSARY_NAME_RE = re.compile(r"^(?:ПЕРЕЧЕНЬ|СПИСОК)\s+(?:СОКРАЩЕНИЙ|ОБОЗНАЧЕНИЙ|УСЛОВНЫХ|ТЕРМИНОВ)(?!\w)")
 TAB_RE = re.compile(r"^\s*(Табл(?:ица)?)(\.?)\s*(\d+(?:\.\d+)?|[А-ЯA-Z]\.\d+)(.*)$", re.IGNORECASE | re.DOTALL)
 CHAPTER_NUMBER_RE = re.compile(
     r"^(?:(?:РАЗДЕЛ|ГЛАВА)\s+)?(\d+(?:\.\d+)*)(\.)?(?=\s|$)", re.IGNORECASE)
@@ -98,7 +101,7 @@ def _structural_name(text):
     t = _norm_caps(text)
     if not t or len(t) > 60:
         return None
-    if t in STRUCTURAL_HEADINGS or STRUCT_APPENDIX_RE.match(t):
+    if t in STRUCTURAL_HEADINGS or STRUCT_APPENDIX_RE.match(t) or GLOSSARY_NAME_RE.match(t):
         return t
     return None
 
@@ -111,9 +114,12 @@ def _toc_level(p):
 
 def _is_toc(p, text=None):
     name = style_name(p).lower()
-    if "toc" in name or "оглавлен" in name or "содержан" in name:
-        # сам заголовок «СОДЕРЖАНИЕ» может иметь стиль «TOC Heading»
-        return _toc_level(p) is not None
+    if _toc_level(p) is not None:
+        return True
+    # сам заголовок «СОДЕРЖАНИЕ» может иметь стиль «TOC Heading»; строки содержания бывают
+    # и в стилях без номера уровня («TOCEntry») — их узнаём по номеру страницы в конце
+    if ("toc" in name or "оглавлен" in name or "содержан" in name) and ("heading" in name or "заголов" in name):
+        return False
     return bool(TOC_TAIL_RE.search(p.text if text is None else text))
 
 
@@ -313,7 +319,9 @@ class DocxChecker:
                     continue
             if m_fig and len(text) < 300:
                 prv = next_nonempty(it["i"], -1)
-                if (prv and prv["kind"] == "p" and has_image(prv["obj"])) or is_caption_style:
+                # рисунок бывает в том же абзаце, что и подпись: картинка, перенос строки, «Рисунок 1 – …»,
+                # или плавающий рисунок, привязанный к абзацу подписи
+                if (prv and prv["kind"] == "p" and has_image(prv["obj"])) or is_caption_style or has_image(p):
                     it["role"] = "figure_caption"
                     continue
                 if DASH_REST_RE.match(m_fig.group(4)):
@@ -373,6 +381,19 @@ class DocxChecker:
         letters = sum(1 for ch in t if ch.isalpha()) or 1
         return symbols >= 2 and cyr / letters < 0.3 and (t.endswith((";", "{", "}", ")", ":")) or symbols >= 4)
 
+    @staticmethod
+    def _prose(text):
+        """Абзац обычного текста («Файл requirements.txt фиксирует версии…»), а не строка кода."""
+        if re.match(r"(?:Источник|Примечание)\b", text):
+            return True    # «Источник: server/app.py» под листингом — пояснение, а не код
+        if not text.strip() or not text[:1].isalpha() or not text[:1].isupper():
+            return False   # отступ, «#», «├──», «{» — так начинаются строки кода
+        if re.search(r"\S {2,}\S|[├└│]", text):
+            return False   # колонки, выровненные пробелами, и дерево каталогов
+        letters = [ch for ch in text if ch.isalpha()]
+        cyr = sum(1 for ch in letters if "а" <= ch.lower() <= "я" or ch in "ёЁ")
+        return len(text.split()) >= 5 and cyr >= 0.5 * len(letters)
+
     def mark_code(self, items):
         """
         Листинги программ: абзацы моноширинным шрифтом или в стиле «код», а также подряд идущие
@@ -385,6 +406,21 @@ class DocxChecker:
                 p = it["obj"]
                 if self._mono(p) or CODE_STYLE_RE.search(style_name(p) or ""):
                     it["role"], it["code_font"] = "code", True
+        # строки сразу под подписью «Листинг N – …» — код, даже набранный обычным шрифтом и сам по себе
+        # на код не похожий (дерево каталогов, «vkbottle==4.3.4»): до первого абзаца обычного текста
+        for k, it in enumerate(items):
+            if it["role"] != "listing_caption":
+                continue
+            j = k + 1
+            while j < len(items) and items[j]["kind"] == "p" and items[j]["role"] in textual + ("code",):
+                if items[j]["role"] != "code" and self._prose(self.text(items[j]["obj"])):
+                    break
+                j += 1
+            while j > k + 1 and items[j - 1]["role"] == "empty":   # пустые строки после листинга — не код
+                j -= 1
+            for x in items[k + 1:j]:
+                if x["role"] != "code":
+                    x["role"], x["code_font"] = "code", False
         # код обычным шрифтом: не меньше трёх строк кода подряд, из них хотя бы две явно похожи на код
         # (комментарии, присваивания и строки с отступом — только внутри такого блока; пустые строки — можно)
         i = 0
@@ -522,7 +558,10 @@ class DocxChecker:
             # записи списка источников: по ГОСТ Р 7.0.100 в них « : », « / », « ; » — с пробелами
             bib_ids = {id(p._p) for p in find_bib_section(self, items)[1]}
             check_typography(
-                [(self._loc(it["obj"]), self.text(it["obj"]),
+                # текст формулы python-docx не отдаёт: пояснение «T<Tab>– количество…» выглядит как
+                # строка, начинающаяся с табуляции
+                [(self._loc(it["obj"]),
+                  self.text(it["obj"]).lstrip() if starts_with_formula(it["obj"]) else self.text(it["obj"]),
                   "bib" if id(it["obj"]._p) in bib_ids else it["role"], has_page_break(it["obj"]))
                  for it in items if it["kind"] == "p" and it["role"] not in ("toc", "skip", "front", "code")],
                 self.report,

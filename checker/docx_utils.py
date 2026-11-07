@@ -67,6 +67,19 @@ def is_formula(p):
     return p._p.find(f".//{MATH_NS}oMath") is not None
 
 
+def starts_with_formula(p):
+    """
+    Абзац начинается с формулы — Word (oMath) или старого редактора формул (объект OLE):
+    «T<Tab>– количество периодов» в пояснениях к формуле. Пробелы перед формулой — уже не она.
+    """
+    for el in p._p.iter():
+        if el.tag in (f"{MATH_NS}oMath", f"{MATH_NS}oMathPara", qn("w:object")):
+            return True
+        if el.tag in (qn("w:t"), qn("w:tab")):
+            return False
+    return False
+
+
 def has_page_break(p):
     for br in p._p.findall('.//' + qn('w:br')):
         if br.get(qn('w:type')) == 'page':
